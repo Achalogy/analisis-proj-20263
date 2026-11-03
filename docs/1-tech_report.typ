@@ -65,7 +65,7 @@ Contenido
 #plot(
   tick-label-size: 6pt,
   xmin: 0,
-  xmax: 25,
+  xmax: 24,
   ymin: 0,
   ymax: 200,
   data(
@@ -79,7 +79,8 @@ Contenido
       (15.0, 150),
       (18.0, 98),
       (19.5, 75),
-      (21.0, 55)
+      (21.0, 55),
+      (24.0, 15)
     ),
     connect: true,
     stroke: blue + 1pt,
