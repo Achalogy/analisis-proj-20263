@@ -1,3 +1,4 @@
 *.pdf
 skills/
 .venv
+__pycache__/
