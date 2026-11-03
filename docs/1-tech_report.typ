@@ -21,8 +21,8 @@
   #v(1.5cm)
 
   Miguel Francisco Vargas Contreras \
-  Miguel Francisco Vargas Contreras \
-  Miguel Francisco Vargas Contreras
+  Adam Kalel Ordoñez Herrera \
+  Julian Andres Espinosa Caipe
 
   #v(1cm)
 
