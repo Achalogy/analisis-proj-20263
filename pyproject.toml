@@ -7,7 +7,10 @@ authors = [
     { name = "Achalogy", email = "acha@acha.dev" }
 ]
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "ipykernel>=6.31.0",
+    "jupyter>=1.1.1",
+]
 
 [project.scripts]
 proj = "proj:main"
