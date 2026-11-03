@@ -1,6 +1,8 @@
 #import "@preview/simple-plot:1.1.0": data, plot
 #import "@preview/charged-ieee:0.1.4": ieee
 
+#let taxi_data = csv("../data/data.csv")
+
 #set page(paper: "a4", margin: 2.5cm)
 #set text(font: "Times New Roman", size: 12pt, lang: "es")
 #set par(justify: true)
@@ -59,3 +61,29 @@
 = Introducción
 
 Contenido
+
+#plot(
+  tick-label-size: 6pt,
+  xmin: 0,
+  xmax: 25,
+  ymin: 0,
+  ymax: 200,
+  data(
+    (
+      (0.0,  15),
+      (1.5,  18),
+      (3.0,  12),
+      (6.0,  45),
+      (9.0,  120),
+      (12.0, 180),
+      (15.0, 150),
+      (18.0, 98),
+      (19.5, 75),
+      (21.0, 55)
+    ),
+    connect: true,
+    stroke: blue + 1pt,
+    // label: "Demanda",
+    // label-pos: 0,
+  ),
+)
