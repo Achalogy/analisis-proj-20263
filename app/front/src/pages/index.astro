@@ -1,0 +1,25 @@
+---
+import { Dashboard } from "../components/Dashboard";
+import "../styles/global.css";
+---
+
+<!doctype html>
+<html lang="es" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚕</text></svg>"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <title>AutoMove City — Control de Flota y Alertas Predictivas</title>
+    <meta
+      name="description"
+      content="Simulador de demanda y despacho de taxis autónomos con Splines Cúbicos y Filtros Predictivos en tiempo real."
+    />
+  </head>
+  <body class="bg-[#090d16] text-slate-100 antialiased min-h-screen">
+    <Dashboard client:load />
+  </body>
+</html>
