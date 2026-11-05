@@ -29,7 +29,7 @@
     ),
   ),
   abstract: [
-    En este trabajo se presenta una solución integral de análisis numérico e ingeniería de software para la gestión y despacho dinámico de una flota de 200 taxis autónomos de la empresa AutoMove City en Bogotá. A partir de diez mediciones discretas y no equidistantes de demanda diaria, se formula e implementa una interpolación mediante splines cúbicos con condición de frontera periódica ($C^2$), garantizando suavidad y cierre exacto en medianoche ($t = 0 equiv 24$ h). Mediante validación cruzada *hold-out*, el spline periódico demostró superioridad frente a la interpolación lineal y al polinomio global de Lagrange, alcanzando un RMSE de 4.8362 solicitudes/minuto. Sobre la curva continua de 1440 minutos se aplicaron técnicas de cálculo numérico: derivación analítica y numérica por diferencias finitas centradas $O(h^2)$ para identificar el pico real de demanda (180.89 sol/min a las 12:21:34, desfasado del nodo medido a las 12:00) y las rampas críticas de aceleración; integración numérica mediante cuadraturas compuestas de Trapecio y Simpson 1/3, cuantificando un volumen diario de 121,824 solicitudes; y determinación exacta de las raíces del umbral crítico de 150 sol/min (ventana de congestión de 291 minutos discretos y 5,729 solicitudes de sobredemanda). Como mejora tecnológica, se desarrolló un Filtro Predictivo de Corto Plazo en modo *streaming* basado en suavizado exponencial doble de Holt amortiguado sobre los residuos estocásticos, reduciendo el RMSE de pronóstico a 30 minutos en un 28.6% respecto a la spline estática y anticipando eventos imprevistos con cero falsas alarmas. Finalmente, el motor matemático se desplegó en una plataforma web interactiva cliente-servidor (FastAPI + WebSockets + Astro/React) con inyección de eventos urbanos en vivo, alertas visuales estilo *Dynamic Island* con síntesis acústica Web Audio y notificaciones push en tiempo real mediante un canal dedicado en `ntfy.acha.dev`.
+    Se presenta una solución de análisis numérico y software en tiempo real para el despacho preventivo de 200 taxis autónomos de AutoMove City en Bogotá. A partir de diez reportes horarios no equidistantes, se construye un spline cúbico periódico ($C^2$) que supera a la interpolación lineal y de Lagrange en validación *hold-out* (RMSE de 4.84 sol/min). Sobre la malla de 1440 minutos diarios se identifican mediante derivación e integración numérica el pico real de demanda (180.89 sol/min a las 12:21:34), el volumen diario (121,824 solicitudes) y la ventana crítica sobre 150 sol/min (291 minutos y 5,729 solicitudes en exceso). Finalmente, se integra un filtro predictivo de Holt amortiguado a 30 minutos (28.6% menos RMSE y cero falsas alarmas) desplegado en una plataforma web interactiva (FastAPI, WebSockets y React) con inyección de eventos en vivo, alertas *Dynamic Island* con síntesis de audio y notificaciones push vía `ntfy.acha.dev`.
   ],
   index-terms: (
     "Análisis numérico",
@@ -99,7 +99,11 @@ $ S_i(t) = a_i + b_i (t - t_i) + c_i (t - t_i)^2 + d_i (t - t_i)^3 $
 
 Donde $a_i, b_i, c_i, d_i$ representan los coeficientes locales del tramo $i$-ésimo. Dichos coeficientes se determinan imponiendo interpolación exacta en los nodos y continuidad de la función, primera derivada y segunda derivada en los nodos interiores:
 
-$ S_i(t_(i+1)) = S_(i+1)(t_(i+1)), quad S'_i(t_(i+1)) = S'_(i+1)(t_(i+1)), quad S''_i(t_(i+1)) = S''_(i+1)(t_(i+1)) $
+$
+    S_i(t_(i+1)) & = S_(i+1)(t_(i+1)) \
+   S'_i(t_(i+1)) & = S'_(i+1)(t_(i+1)) \
+  S''_i(t_(i+1)) & = S''_(i+1)(t_(i+1))
+$
 
 Esto garantiza que $S in C^2[0, 24]$, eliminando quiebres de pendiente y oscilaciones espurias en la aceleración de la demanda @chapra2021.
 
@@ -237,9 +241,7 @@ Al hallar las raíces exactas de $S'(t) = 0$ mediante `dS.roots()`, se determina
     columns: (1fr, 1.1fr, 1.2fr, 1.1fr, 1.1fr),
     inset: 4pt,
     align: center,
-    table.header(
-      [*Hora (hh:mm:ss)*], [*Tiempo $t$ (h)*], [*Demanda $S(t)$*], [*Curvatura $S''(t)$*], [*Clasificación*]
-    ),
+    table.header([*Hora*], [*Tiempo $t$ (h)*], [*Demanda $S(t)$*], [*Curvatura $S''(t)$*], [*Clasificación*]),
     [00:09:16], [0.154], [14.855], [+11.281], [Mínimo local],
     [01:27:03], [1.451], [18.014], [-11.281], [Máximo local],
     [03:10:02], [3.167], [*11.855*], [+10.237], [*Mínimo global*],
@@ -318,11 +320,15 @@ La spline periódica $S(t)$ describe el perfil estructural de un día típico, p
 
 $ r_t = y_t - S(t) $
 
-Para evaluar el filtro en condiciones realistas, la demanda observada minuto a minuto $y_t$ se modela como:
+Para evaluar el filtro en condiciones realistas, la demanda observada minuto a minuto $y_t$ se modela mediante el sistema estocástico:
 
-$ y_t = max(0, S(t) + sum_j A_j exp(- 1/2 ((t - c_j) / w_j)^2) + u_t + epsilon_t), quad u_t = phi_u u_(t-1) + eta_t $
+$
+  y_t & = max(0, S(t) + p_t + u_t + epsilon_t) \
+  p_t & = sum_j A_j exp(- 1/2 ((t - c_j) / w_j)^2) \
+  u_t & = phi_u u_(t-1) + eta_t
+$
 
-donde $u_t$ es un proceso autorregresivo lento AR(1) ($phi_u = 0.985, sigma_u = 1.2$ sol/min) que captura variaciones persistentes de tráfico o clima, $epsilon_t tilde.op cal(N)(0, 4^2)$ es ruido blanco de alta frecuencia (desviación estándar combinada de la fluctuación de $7.41$ sol/min), y los pulsos gaussianos modelan eventos imprevistos que la spline histórica desconoce:
+donde $p_t$ agrupa los pulsos de eventos externos, $u_t$ es un proceso autorregresivo lento AR(1) ($phi_u = 0.985, sigma_u = 1.2$ sol/min) que captura variaciones persistentes de tráfico o clima, y $epsilon_t tilde.op cal(N)(0, 4^2)$ es ruido blanco de alta frecuencia (desviación estándar combinada de $7.41$ sol/min). Los dos eventos de prueba evaluados son:
 - *Aguacero en hora pico matutina:* centro $c_1 = 8.00$ h, ancho $w_1 = 0.60$ h, amplitud $A_1 = +70$ sol/min sobre $S(8.0) = 93.0$ sol/min (pico estructural de 163.0 sol/min).
 - *Salida de concierto (Movistar Arena):* centro $c_2 = 19.00$ h, ancho $w_2 = 0.50$ h, amplitud $A_2 = +90$ sol/min sobre $S(19.0) = 82.1$ sol/min (pico estructural de 172.1 sol/min).
 
@@ -334,10 +340,11 @@ En cada minuto $t$, el filtro actualiza recursivamente el residuo suavizado sin 
 + *Suavizado Exponencial Doble de Holt Amortiguado:* estima tanto el nivel $ell_t$ como la pendiente local $b_t$ del residuo con factor de amortiguamiento $phi in (0, 1)$:
 
 $
-  ell_t = alpha r_t + (1 - alpha)(ell_(t-1) + phi b_(t-1)), quad b_t = beta (ell_t - ell_(t-1)) + (1 - beta) phi b_(t-1)
+           ell_t & = alpha r_t + (1 - alpha)(ell_(t-1) + phi b_(t-1)) \
+             b_t & = beta (ell_t - ell_(t-1)) + (1 - beta) phi b_(t-1) \
+  hat(r)_(t+H|t) & = ell_t + b_t sum_(i=1)^H phi^i \
+    hat(y)_(t+H) & = max(0, S(t+H) + hat(r)_(t+H|t))
 $
-
-$ hat(r)_(t+H|t) = ell_t + b_t sum_(i=1)^H phi^i, quad hat(y)_(t+H) = max(0, S(t+H) + hat(r)_(t+H|t)) $
 
 Para un horizonte predictivo de $H = 30$ minutos, el motor de alertas aplica dos reglas anti-rebote:
 - *Confirmación temporal:* la alerta preventiva se activa únicamente cuando $hat(y)_(t+30) > 150$ durante *3 minutos consecutivos*.
@@ -450,7 +457,9 @@ El servidor fue construido con *FastAPI* y *Pydantic* (`schemas.py`), reutilizan
 + *Ejecución asíncrona sin desfase temporal:* La clase `SimuladorRunner` (`simulador.py`) administra el ciclo de vida de la simulación (`iniciada`, `en_progreso`, `pausada`, `completada`, `detenida`). En cada paso $k in \{0, dots, 1439\}$, calcula el intervalo objetivo $Delta t_"real" = T_"total" / 1440$ y ajusta dinámicamente la espera asíncrona (`asyncio.sleep`) descontando el tiempo de cómputo e I/O, garantizando que el recorrido llegue con exactitud hasta el minuto 1439 (24:00 h).
 + *Inyección interactiva de contingencias en vivo:* En lugar de limitar la simulación a escenarios pregrabados, el endpoint `POST /simulacion/evento` permite inyectar un evento externo en el minuto exacto $m_0$ en que se encuentra la simulación. Matemáticamente, dada una amplitud adicional $A$ (en sol/min) y una duración estimada $D$ (en minutos), el backend superpone en caliente sobre la serie restante $m >= m_0$ un pulso gaussiano asimétrico con rampa de activación inmediata:
   $
-    Delta y_m = A exp(- 1/2 ((m - c_m) / sigma_m)^2) dot min(1, (m - m_0 + 3) / 6), quad c_m = m_0 + 0.35 D, quad sigma_m = max(6, 0.28 D)
+    Delta y_m & = A exp(- 1/2 ((m - c_m) / sigma_m)^2) dot r_m \
+          r_m & = min(1, (m - m_0 + 3) / 6) \
+          c_m & = m_0 + 0.35 D, quad sigma_m = max(6, 0.28 D)
   $
   Esto produce un incremento inmediato visible en el lienzo desde el instante del clic y una rampa ascendente realista que el filtro de Holt amortiguado detecta y proyecta a 30 minutos.
 
