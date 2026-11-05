@@ -20,10 +20,7 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [canvasSize, setCanvasSize] = useState<{
-    width: number;
-    height: number;
-  }>({
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({
     width: 800,
     height: 400,
   });
@@ -34,7 +31,6 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
     punto: PuntoPaso;
   } | null>(null);
 
-  // Observe container size so the chart always fills 100% of the width cleanly
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -78,12 +74,10 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
     ctx.save();
     ctx.scale(dpr, dpr);
 
-    // Generous margins so axis labels, titles, and badges never overlap
     const padding = { top: 42, right: 36, bottom: 54, left: 64 };
     const chartW = Math.max(100, width - padding.left - padding.right);
     const chartH = Math.max(100, height - padding.top - padding.bottom);
 
-    // Dynamic Y Range so peaks never clip or hit top labels
     let peakVal = Math.max(200, umbral + 40);
     for (let i = 0; i < historial.length; i++) {
       const p = historial[i];
@@ -96,23 +90,18 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
     const maxY = Math.ceil((peakVal + 20) / 50) * 50;
     const minY = 0;
 
-    // Full 24h mapping: minute 0 -> left edge (00:00), minute 1439 -> right edge (24:00)
     const MAX_MIN = 1439;
     const getX = (minuto: number) =>
-      padding.left +
-      (Math.min(MAX_MIN, Math.max(0, minuto)) / MAX_MIN) * chartW;
+      padding.left + (Math.min(MAX_MIN, Math.max(0, minuto)) / MAX_MIN) * chartW;
     const getY = (val: number) =>
       padding.top + chartH - ((val - minY) / (maxY - minY)) * chartH;
 
-    // Clear canvas with crisp light background
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
 
-    // Plot area subtle background
-    ctx.fillStyle = "#f8fafc";
+    ctx.fillStyle = "#fcfcfd";
     ctx.fillRect(padding.left, padding.top, chartW, chartH);
 
-    // Shaded Alert Areas in history
     if (historial.length > 0) {
       let alertStart: number | null = null;
       for (let i = 0; i < historial.length; i++) {
@@ -135,14 +124,12 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
       }
     }
 
-    // Y-axis title (top-left, clear of all tick numbers)
     ctx.fillStyle = "#475569";
     ctx.font = "600 11px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.fillText("Demanda (solicitudes / min)", padding.left, 18);
 
-    // Grid lines (Y) every 50 units
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.font = "500 11px ui-monospace, SFMono-Regular, monospace";
@@ -165,7 +152,6 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
       ctx.fillText(`${yVal}`, padding.left - 10, yPos);
     }
 
-    // Grid lines (X - Hours 00:00 to 24:00 every 3h)
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.font = "500 11px ui-monospace, SFMono-Regular, monospace";
@@ -186,28 +172,24 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
       ctx.fillText(label, xPos, padding.top + chartH + 10);
     }
 
-    // X-axis title
     ctx.fillStyle = "#64748b";
     ctx.font = "600 11px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(
       "Hora del día (ciclo completo de 24 horas)",
       padding.left + chartW / 2,
-      padding.top + chartH + 32,
+      padding.top + chartH + 32
     );
 
-    // Plot border
     ctx.strokeStyle = "#cbd5e1";
     ctx.lineWidth = 1;
     ctx.strokeRect(padding.left, padding.top, chartW, chartH);
 
-    // Clip curves to plot area so lines never bleed into labels
     ctx.save();
     ctx.beginPath();
     ctx.rect(padding.left, padding.top, chartW, chartH);
     ctx.clip();
 
-    // 1. Draw Full 24h Base Spline Curve
     if (baseSpline.length > 1) {
       ctx.beginPath();
       ctx.strokeStyle = "#64748b";
@@ -236,16 +218,15 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
       ctx.setLineDash([]);
     }
 
-    // 2. Draw Observed Demand (Solid Blue Line with soft area fill)
     if (historial.length > 0) {
       const gradient = ctx.createLinearGradient(
         0,
         padding.top,
         0,
-        padding.top + chartH,
+        padding.top + chartH
       );
-      gradient.addColorStop(0, "rgba(37, 99, 235, 0.18)");
-      gradient.addColorStop(1, "rgba(37, 99, 235, 0.01)");
+      gradient.addColorStop(0, "rgba(245, 158, 11, 0.28)");
+      gradient.addColorStop(1, "rgba(250, 204, 21, 0.02)");
 
       ctx.beginPath();
       ctx.moveTo(getX(historial[0].minuto), getY(historial[0].y_obs));
@@ -260,8 +241,8 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
       ctx.fill();
 
       ctx.beginPath();
-      ctx.strokeStyle = "#2563eb";
-      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = "#d97706";
+      ctx.lineWidth = 2.6;
       historial.forEach((p, idx) => {
         const x = getX(p.minuto);
         const y = getY(p.y_obs);
@@ -271,11 +252,10 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
       ctx.stroke();
     }
 
-    // 3. Draw 30-min Projected Line (Amber/Orange)
     if (historial.length > 1) {
       ctx.beginPath();
-      ctx.strokeStyle = "#d97706";
-      ctx.lineWidth = 2.0;
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 2.1;
       let started = false;
       historial.forEach((p) => {
         if (p.minuto_objetivo <= MAX_MIN) {
@@ -292,11 +272,10 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
       ctx.stroke();
     }
 
-    // 4. Draw Injected Event vertical lines & non-overlapping pill tags
     eventosInyectados.forEach((ev, idx) => {
       const xEv = getX(ev.minuto_inicio);
       ctx.beginPath();
-      ctx.strokeStyle = "#7c3aed";
+      ctx.strokeStyle = "#b45309";
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 4]);
       ctx.moveTo(xEv, padding.top);
@@ -304,34 +283,32 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Event pill label with opaque background, staggered vertically to prevent overlap
       const labelText = `${ev.descripcion} (${ev.hora_inicio})`;
-      ctx.font = "600 10px system-ui, -apple-system, sans-serif";
+      ctx.font = "700 10px system-ui, -apple-system, sans-serif";
       const textW = ctx.measureText(labelText).width;
       const pillW = textW + 12;
       const pillH = 20;
       const rowOffset = (idx % 3) * 24;
       const pillX = Math.min(
         padding.left + chartW - pillW - 6,
-        Math.max(padding.left + 6, xEv - pillW / 2),
+        Math.max(padding.left + 6, xEv - pillW / 2)
       );
       const pillY = padding.top + 8 + rowOffset;
 
-      ctx.fillStyle = "#f5f3ff";
-      ctx.strokeStyle = "#c4b5fd";
+      ctx.fillStyle = "#fef3c7";
+      ctx.strokeStyle = "#f59e0b";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.roundRect(pillX, pillY, pillW, pillH, 5);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = "#5b21b6";
+      ctx.fillStyle = "#78350f";
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       ctx.fillText(labelText, pillX + 6, pillY + pillH / 2);
     });
 
-    // 5. Critical Threshold Line (Red dashed)
     const yUmbral = getY(umbral);
     ctx.beginPath();
     ctx.strokeStyle = "#dc2626";
@@ -342,7 +319,6 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Threshold Badge with solid background on the left (00:15-05:00 has low demand, so never overlaps curves)
     const umbralText = `Umbral crítico: ${umbral} sol/min`;
     ctx.font = "700 11px system-ui, -apple-system, sans-serif";
     const uTextW = ctx.measureText(umbralText).width;
@@ -364,14 +340,13 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
     ctx.textBaseline = "middle";
     ctx.fillText(umbralText, uBoxX + 8, uBoxY + uBoxH / 2);
 
-    // 6. Current playhead position
     if (historial.length > 0) {
       const lastP = historial[historial.length - 1];
       const curX = getX(minutoActual);
       const curY = getY(lastP.y_obs);
 
       ctx.beginPath();
-      ctx.strokeStyle = alertaActiva ? "#dc2626" : "#2563eb";
+      ctx.strokeStyle = alertaActiva ? "#dc2626" : "#d97706";
       ctx.lineWidth = 1.5;
       ctx.setLineDash([3, 3]);
       ctx.moveTo(curX, padding.top);
@@ -380,10 +355,10 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
       ctx.setLineDash([]);
 
       ctx.beginPath();
-      ctx.arc(curX, curY, 5.5, 0, Math.PI * 2);
-      ctx.fillStyle = alertaActiva ? "#dc2626" : "#2563eb";
+      ctx.arc(curX, curY, 6, 0, Math.PI * 2);
+      ctx.fillStyle = alertaActiva ? "#dc2626" : "#facc15";
       ctx.fill();
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeStyle = "#0f172a";
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -400,7 +375,6 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
     canvasSize,
   ]);
 
-  // Handle canvas mouse move for interactive inspection
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas || historial.length === 0) return;
@@ -421,7 +395,7 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
     const closestP = historial.reduce((prev, curr) =>
       Math.abs(curr.minuto - hoveredMin) < Math.abs(prev.minuto - hoveredMin)
         ? curr
-        : prev,
+        : prev
     );
 
     if (closestP && Math.abs(closestP.minuto - hoveredMin) <= 30) {
@@ -439,13 +413,12 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
   const handleMouseLeave = () => setHoverData(null);
 
   return (
-    <div className="relative w-full rounded-2xl bg-white border border-slate-200 p-5 shadow-sm">
-      {/* Chart Header & Legend */}
+    <div className="relative w-full rounded-2xl bg-white border border-amber-300/70 p-5 shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2.5">
           <span
-            className={`flex h-2.5 w-2.5 rounded-full shrink-0 ${
-              alertaActiva ? "bg-red-600 animate-ping" : "bg-blue-600"
+            className={`flex h-3 w-3 rounded-full shrink-0 border border-slate-900/20 ${
+              alertaActiva ? "bg-red-600 animate-ping" : "bg-amber-400"
             }`}
           />
           <h3 className="font-bold text-slate-900 text-base">
@@ -453,10 +426,9 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
           </h3>
         </div>
 
-        {/* Legend with non-wrapping badges */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium text-slate-700">
           <div className="flex items-center gap-2 whitespace-nowrap">
-            <span className="inline-block w-4 h-1 rounded bg-blue-600" />
+            <span className="inline-block w-4 h-1.5 rounded bg-amber-500 border border-amber-700/30" />
             <span>Demanda real observada</span>
           </div>
           <div className="flex items-center gap-2 whitespace-nowrap">
@@ -464,7 +436,7 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
             <span>Curva base esperada</span>
           </div>
           <div className="flex items-center gap-2 whitespace-nowrap">
-            <span className="inline-block w-4 h-1 rounded bg-amber-600" />
+            <span className="inline-block w-4 h-1 rounded bg-blue-600" />
             <span>Predicción (+30 min)</span>
           </div>
           <div className="flex items-center gap-2 whitespace-nowrap">
@@ -476,7 +448,6 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
         </div>
       </div>
 
-      {/* Canvas Container */}
       <div ref={containerRef} className="relative w-full h-96 sm:h-[420px]">
         <canvas
           ref={canvasRef}
@@ -485,20 +456,19 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
           className="cursor-crosshair w-full h-full block rounded-xl"
         />
 
-        {/* Hover Tooltip */}
         {hoverData && (
           <div
-            className="pointer-events-none absolute z-30 transform -translate-y-full mb-3 rounded-xl bg-white/95 border border-slate-300 p-3 shadow-lg text-xs backdrop-blur-sm min-w-52"
+            className="pointer-events-none absolute z-30 transform -translate-y-full mb-3 rounded-xl bg-white/95 border border-amber-400 p-3 shadow-lg text-xs backdrop-blur-sm min-w-52"
             style={{
               left: `${Math.min(
                 Math.max(110, hoverData.x),
-                hoverData.containerWidth - 110,
+                hoverData.containerWidth - 110
               )}px`,
               top: `${Math.max(16, hoverData.y - 12)}px`,
               transform: "translate(-50%, -100%)",
             }}
           >
-            <div className="font-mono font-bold text-slate-900 border-b border-slate-200 pb-1.5 mb-2 flex justify-between items-center">
+            <div className="font-mono font-bold text-slate-900 border-b border-amber-200 pb-1.5 mb-2 flex justify-between items-center">
               <span>Hora: {hoverData.punto.hora}</span>
               <span className="text-slate-500 text-[11px]">
                 Minuto {hoverData.punto.minuto}
@@ -507,7 +477,7 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
             <div className="space-y-1.5">
               <div className="flex justify-between text-slate-700">
                 <span>Demanda actual:</span>
-                <span className="font-bold text-blue-700">
+                <span className="font-bold text-amber-700">
                   {hoverData.punto.y_obs} sol/min
                 </span>
               </div>
@@ -517,7 +487,7 @@ export const SimulationChart: React.FC<SimulationChartProps> = ({
                   {hoverData.punto.base_spline} sol/min
                 </span>
               </div>
-              <div className="flex justify-between text-amber-800">
+              <div className="flex justify-between text-blue-700">
                 <span>Estimada a las {hoverData.punto.hora_objetivo}:</span>
                 <span className="font-bold">
                   {hoverData.punto.y_proy} sol/min

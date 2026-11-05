@@ -3,6 +3,11 @@ import { SimulationChart } from "./SimulationChart";
 import { ControlPanel } from "./ControlPanel";
 import { KpiCards } from "./KpiCards";
 import { AlertsLog } from "./AlertsLog";
+import {
+  DynamicIsland,
+  soundEngine,
+  type IslandNotification,
+} from "./DynamicIsland";
 import type {
   SimulacionConfig,
   PuntoPaso,
@@ -10,7 +15,7 @@ import type {
   EstadoCiclo,
   EventoInyectado,
 } from "./types";
-import { Car, Radio, Shield } from "lucide-react";
+import { Car, Radio, Shield, Volume2, VolumeX } from "lucide-react";
 
 const DEFAULT_CONFIG: SimulacionConfig = {
   duracion_real_segundos: 60.0,
@@ -39,7 +44,7 @@ export const Dashboard: React.FC = () => {
   const [historial, setHistorial] = useState<PuntoPaso[]>([]);
   const [alertas, setAlertas] = useState<AlertaItem[]>([]);
   const [eventosInyectados, setEventosInyectados] = useState<EventoInyectado[]>(
-    [],
+    []
   );
   const [ultimoPaso, setUltimoPaso] = useState<PuntoPaso | null>(null);
   const [estado, setEstado] = useState<EstadoCiclo>("iniciada");
@@ -47,7 +52,11 @@ export const Dashboard: React.FC = () => {
   const [tiempoTranscurrido, setTiempoTranscurrido] = useState<number>(0);
   const [connected, setConnected] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"simulador" | "teoria">(
-    "simulador",
+    "simulador"
+  );
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [islandNotif, setIslandNotif] = useState<IslandNotification | null>(
+    null
   );
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -55,8 +64,21 @@ export const Dashboard: React.FC = () => {
   const pasosBufferRef = useRef<PuntoPaso[]>([]);
   const alertasBufferRef = useRef<AlertaItem[]>([]);
   const rafIdRef = useRef<number | null>(null);
+  const soundEnabledRef = useRef<boolean>(soundEnabled);
 
-  // Flush buffered WebSocket steps on animation frame so UI never lags behind the backend
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+
+  const notifyIsland = useCallback((notif: Omit<IslandNotification, "id">) => {
+    const fullNotif: IslandNotification = {
+      ...notif,
+      id: `${notif.tipo}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    };
+    setIslandNotif(fullNotif);
+    soundEngine.play(notif.tipo, soundEnabledRef.current);
+  }, []);
+
   const flushBuffers = useCallback(() => {
     rafIdRef.current = null;
     if (pasosBufferRef.current.length > 0) {
@@ -71,8 +93,25 @@ export const Dashboard: React.FC = () => {
       const nuevasAlertas = alertasBufferRef.current;
       alertasBufferRef.current = [];
       setAlertas((prev) => [...prev, ...nuevasAlertas]);
+
+      const ultimaAlerta = nuevasAlertas[nuevasAlertas.length - 1];
+      if (ultimaAlerta.tipo === "INICIO") {
+        notifyIsland({
+          tipo: "alerta_inicio",
+          etiqueta: `Emitida ${ultimaAlerta.hora_emision}`,
+          titulo: "Alerta de Despacho Preventivo",
+          subtitulo: `Proyección de ${ultimaAlerta.y_proy} sol/min para las ${ultimaAlerta.hora_objetivo}. Reasignar flota.`,
+        });
+      } else {
+        notifyIsland({
+          tipo: "alerta_fin",
+          etiqueta: `Normalizada ${ultimaAlerta.hora_emision}`,
+          titulo: "Demanda Normalizada",
+          subtitulo: `Proyección en ${ultimaAlerta.y_proy} sol/min bajo el umbral crítico.`,
+        });
+      }
     }
-  }, []);
+  }, [notifyIsland]);
 
   const scheduleFlush = useCallback(() => {
     if (rafIdRef.current === null) {
@@ -80,7 +119,6 @@ export const Dashboard: React.FC = () => {
     }
   }, [flushBuffers]);
 
-  // Load 24h base spline on initial mount
   useEffect(() => {
     fetch(`${API_BASE}/simulacion/base`)
       .then((r) => (r.ok ? r.json() : null))
@@ -92,7 +130,6 @@ export const Dashboard: React.FC = () => {
       .catch(() => {});
   }, []);
 
-  // Manage elapsed real-time clock while estado === 'en_progreso'
   useEffect(() => {
     if (estado === "en_progreso") {
       let lastTick = performance.now();
@@ -114,7 +151,6 @@ export const Dashboard: React.FC = () => {
     };
   }, [estado]);
 
-  // Close WS helper
   const disconnectWs = useCallback(() => {
     if (wsRef.current) {
       wsRef.current.close();
@@ -123,7 +159,6 @@ export const Dashboard: React.FC = () => {
     setConnected(false);
   }, []);
 
-  // Connect to live WebSocket stream
   const connectWs = useCallback(() => {
     disconnectWs();
 
@@ -185,6 +220,12 @@ export const Dashboard: React.FC = () => {
             setEstado(msg.estado === "detenida" ? "detenida" : "completada");
             if (msg.estado !== "detenida") {
               setProgreso(100);
+              notifyIsland({
+                tipo: "info",
+                etiqueta: "24:00",
+                titulo: "Simulación de 24 Horas Completada",
+                subtitulo: `Ciclo finalizado con ${msg.total_alertas ?? 0} eventos de alerta registrados.`,
+              });
             }
             disconnectWs();
           }
@@ -203,9 +244,8 @@ export const Dashboard: React.FC = () => {
     } catch (err) {
       console.warn("No se pudo conectar WebSocket al backend:", err);
     }
-  }, [disconnectWs, flushBuffers, scheduleFlush]);
+  }, [disconnectWs, flushBuffers, notifyIsland, scheduleFlush]);
 
-  // Start Simulation
   const handleStart = async () => {
     try {
       pasosBufferRef.current = [];
@@ -235,16 +275,21 @@ export const Dashboard: React.FC = () => {
 
       setEstado("en_progreso");
       connectWs();
+      notifyIsland({
+        tipo: "info",
+        etiqueta: "00:00",
+        titulo: "Simulación Iniciada",
+        subtitulo: `Monitoreando las 24 horas en ${config.duracion_real_segundos} segundos.`,
+      });
     } catch (err) {
       alert(
-        `No se pudo iniciar la simulación. Verifica que el servidor backend esté activo en ${API_BASE}.\n\nComando: uv run uvicorn app.back.main:app --reload --port 8000`,
+        `No se pudo iniciar la simulación. Verifica que el servidor backend esté activo en ${API_BASE}.\n\nComando: uv run uvicorn app.back.main:app --reload --port 8000`
       );
       console.error(err);
       setEstado("iniciada");
     }
   };
 
-  // Pause / Resume Simulation
   const handlePauseToggle = async () => {
     try {
       if (estado === "en_progreso") {
@@ -253,6 +298,13 @@ export const Dashboard: React.FC = () => {
         });
         if (r.ok) {
           setEstado("pausada");
+          notifyIsland({
+            tipo: "info",
+            etiqueta: ultimoPaso?.hora || "00:00",
+            titulo: "Simulación en Pausa",
+            subtitulo:
+              "Puedes inspeccionar la curva o enviar un evento externo antes de reanudar.",
+          });
         }
       } else if (estado === "pausada") {
         const r = await fetch(`${API_BASE}/simulacion/reanudar`, {
@@ -260,6 +312,12 @@ export const Dashboard: React.FC = () => {
         });
         if (r.ok) {
           setEstado("en_progreso");
+          notifyIsland({
+            tipo: "info",
+            etiqueta: ultimoPaso?.hora || "00:00",
+            titulo: "Simulación Reanudada",
+            subtitulo: "Continuando el monitoreo predictivo de la flota.",
+          });
         }
       }
     } catch (err) {
@@ -267,7 +325,6 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // Restart Simulation (resets and starts fresh from 00:00)
   const handleRestart = async () => {
     try {
       await fetch(`${API_BASE}/simulacion/detener`, { method: "POST" });
@@ -282,9 +339,9 @@ export const Dashboard: React.FC = () => {
     setProgreso(0);
     setTiempoTranscurrido(0);
     setEstado("iniciada");
+    setIslandNotif(null);
   };
 
-  // Change Simulation Speed
   const handleChangeVelocidad = async (nuevaDuracionSegundos: number) => {
     setConfig((prev) => ({
       ...prev,
@@ -299,17 +356,22 @@ export const Dashboard: React.FC = () => {
             duracion_real_segundos: nuevaDuracionSegundos,
           }),
         });
+        notifyIsland({
+          tipo: "info",
+          etiqueta: `${nuevaDuracionSegundos}s`,
+          titulo: "Velocidad Actualizada",
+          subtitulo: `Duración total del ciclo ajustada a ${nuevaDuracionSegundos} segundos.`,
+        });
       } catch (err) {
         console.warn("No se pudo actualizar velocidad en vivo:", err);
       }
     }
   };
 
-  // Inject Live External Event right at the current simulation minute
   const handleInjectEvent = async (
     descripcion: string,
     amplitud: number,
-    duracionMinutos: number,
+    duracionMinutos: number
   ) => {
     try {
       const resp = await fetch(`${API_BASE}/simulacion/evento`, {
@@ -324,9 +386,16 @@ export const Dashboard: React.FC = () => {
       if (resp.ok) {
         const data = await resp.json();
         if (data.evento) {
+          const ev: EventoInyectado = data.evento;
           setEventosInyectados((prev) => {
-            if (prev.some((e) => e.id === data.evento.id)) return prev;
-            return [...prev, data.evento];
+            if (prev.some((e) => e.id === ev.id)) return prev;
+            return [...prev, ev];
+          });
+          notifyIsland({
+            tipo: "evento",
+            etiqueta: `Hora ${ev.hora_inicio}`,
+            titulo: `Evento Enviado: ${ev.descripcion}`,
+            subtitulo: `Aumento de +${ev.amplitud} sol/min durante ${ev.duracion_minutos} minutos en la ciudad.`,
           });
         }
       }
@@ -335,7 +404,6 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -345,36 +413,71 @@ export const Dashboard: React.FC = () => {
   }, [disconnectWs]);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      {/* Top Accent Bar */}
-      <div className="h-1.5 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-amber-500" />
+    <div className="min-h-screen bg-slate-50 text-slate-900 selection:bg-amber-400 selection:text-slate-950">
+      <DynamicIsland
+        notification={islandNotif}
+        onDismiss={() => setIslandNotif(null)}
+        horaActual={ultimoPaso?.hora || "00:00"}
+        enAlerta={ultimoPaso?.alerta_activa ?? false}
+        activo={estado === "en_progreso"}
+        pausado={estado === "pausada"}
+      />
 
-      {/* Main Navbar */}
-      <header className="border-b border-slate-200 bg-white sticky top-0 z-40 shadow-2xs">
+      <div className="h-2 w-full bg-[repeating-linear-gradient(45deg,#facc15,#facc15_12px,#0f172a_12px,#0f172a_24px)]" />
+
+      <header className="border-b border-amber-300/80 bg-white/95 backdrop-blur-md sticky top-0 z-40 shadow-2xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
-          {/* Logo & Brand */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 text-white shadow-xs">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-400 text-slate-950 border border-amber-500/40 shadow-sm">
               <Car className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-slate-900">
-                  AutoMove <span className="text-blue-600">City</span>
+                  AutoMove <span className="text-amber-500">City</span>
                 </h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
-                  Despacho Preventivo
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-950 border border-amber-300 uppercase tracking-wider">
+                  Despacho Inteligente
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Monitoreo y predicción de demanda para flota de 200 taxis
-                autónomos
+                Monitoreo y predicción de demanda para flota de 200 taxis autónomos
               </p>
             </div>
           </div>
 
-          {/* Connection Status & View Tabs */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                const next = !soundEnabled;
+                setSoundEnabled(next);
+                if (next) {
+                  soundEngine.play("info", true);
+                }
+              }}
+              title={
+                soundEnabled ? "Silenciar notificaciones" : "Activar sonido"
+              }
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all cursor-pointer ${
+                soundEnabled
+                  ? "bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100"
+                  : "bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {soundEnabled ? (
+                <>
+                  <Volume2 className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden sm:inline">Sonido activo</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden sm:inline">Silenciado</span>
+                </>
+              )}
+            </button>
+
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-medium text-slate-700">
               <span
                 className={`w-2 h-2 rounded-full ${
@@ -389,7 +492,7 @@ export const Dashboard: React.FC = () => {
                 onClick={() => setActiveTab("simulador")}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   activeTab === "simulador"
-                    ? "bg-white text-slate-900 shadow-2xs font-bold"
+                    ? "bg-amber-400 text-slate-950 shadow-2xs font-bold"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
@@ -399,7 +502,7 @@ export const Dashboard: React.FC = () => {
                 onClick={() => setActiveTab("teoria")}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   activeTab === "teoria"
-                    ? "bg-white text-slate-900 shadow-2xs font-bold"
+                    ? "bg-amber-400 text-slate-950 shadow-2xs font-bold"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
@@ -410,11 +513,9 @@ export const Dashboard: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {activeTab === "simulador" ? (
           <>
-            {/* Control Panel: Speed, Start/Pause/Restart, and Live Event Injection */}
             <ControlPanel
               duracionReal={config.duracion_real_segundos}
               onChangeVelocidad={handleChangeVelocidad}
@@ -428,7 +529,6 @@ export const Dashboard: React.FC = () => {
               eventosInyectados={eventosInyectados}
             />
 
-            {/* KPI Summary Cards */}
             <KpiCards
               ultimoPaso={ultimoPaso}
               enAlerta={ultimoPaso?.alerta_activa ?? false}
@@ -438,7 +538,6 @@ export const Dashboard: React.FC = () => {
               tiempoTranscurrido={tiempoTranscurrido}
             />
 
-            {/* Full-Width 24-Hour Simulation Chart */}
             <SimulationChart
               historial={historial}
               baseSpline={baseSpline}
@@ -448,15 +547,13 @@ export const Dashboard: React.FC = () => {
               alertaActiva={ultimoPaso?.alerta_activa ?? false}
             />
 
-            {/* Real-Time Alerts Log */}
             <AlertsLog alertas={alertas} />
           </>
         ) : (
-          /* Tab: Detalles del Modelo */
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+            <div className="p-6 rounded-2xl bg-white border border-amber-300/70 shadow-xs space-y-4">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Shield className="w-5 h-5 text-blue-600" /> Curva Base: Spline
+                <Shield className="w-5 h-5 text-amber-500" /> Curva Base: Spline
                 Cúbico Periódico
               </h3>
               <p className="text-sm text-slate-600 leading-relaxed">
@@ -468,7 +565,9 @@ export const Dashboard: React.FC = () => {
               </p>
               <ul className="text-xs text-slate-600 space-y-2 list-disc list-inside">
                 <li>
-                  <strong className="text-slate-900">Continuidad suave:</strong>{" "}
+                  <strong className="text-slate-900">
+                    Continuidad suave:
+                  </strong>{" "}
                   la curva y su tasa de cambio son continuas en todo momento.
                 </li>
                 <li>
@@ -487,9 +586,9 @@ export const Dashboard: React.FC = () => {
               </ul>
             </div>
 
-            <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+            <div className="p-6 rounded-2xl bg-white border border-amber-300/70 shadow-xs space-y-4">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Radio className="w-5 h-5 text-amber-600" /> Predicción
+                <Radio className="w-5 h-5 text-amber-500" /> Predicción
                 Automática a 30 Minutos
               </h3>
               <p className="text-sm text-slate-600 leading-relaxed">
@@ -497,7 +596,7 @@ export const Dashboard: React.FC = () => {
                 suavizado exponencial con tendencia amortiguada (Holt) para
                 anticipar la demanda con <strong>30 minutos de ventaja</strong>:
               </p>
-              <div className="p-3 bg-slate-50 rounded-xl font-mono text-xs text-slate-800 border border-slate-200">
+              <div className="p-3 bg-amber-50/70 rounded-xl font-mono text-xs text-amber-950 border border-amber-200">
                 Demanda estimada (t + 30 min) = Curva Base (t + 30 min) +
                 Tendencia reciente suavizada
               </div>
@@ -528,11 +627,10 @@ export const Dashboard: React.FC = () => {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-slate-200 bg-white mt-12 py-6 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-700">AutoMove City</span>
+            <span className="font-bold text-slate-800">AutoMove City</span>
             <span>· Análisis Numérico para Ingeniería</span>
           </div>
           <p className="text-slate-500">

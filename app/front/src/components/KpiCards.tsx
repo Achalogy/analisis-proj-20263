@@ -35,12 +35,12 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
       {/* 1. Reloj de Simulación */}
-      <div className="rounded-xl bg-white border border-slate-200 p-3.5 shadow-2xs flex flex-col justify-between">
+      <div className="rounded-xl bg-white border border-amber-300/70 p-3.5 shadow-2xs flex flex-col justify-between">
         <div className="flex items-center justify-between text-slate-500 mb-1">
           <span className="text-xs font-semibold uppercase tracking-wider">
             Hora Ciudad
           </span>
-          <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+          <Clock className="w-4 h-4 text-amber-500 shrink-0" />
         </div>
         <div>
           <div className="font-mono text-2xl font-black text-slate-900 tracking-tight">
@@ -53,15 +53,15 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
       </div>
 
       {/* 2. Demanda Observada */}
-      <div className="rounded-xl bg-white border border-slate-200 p-3.5 shadow-2xs flex flex-col justify-between">
-        <div className="flex items-center justify-between text-slate-500 mb-1">
+      <div className="rounded-xl bg-amber-50/50 border border-amber-300/80 p-3.5 shadow-2xs flex flex-col justify-between">
+        <div className="flex items-center justify-between text-slate-600 mb-1">
           <span className="text-xs font-semibold uppercase tracking-wider">
             Demanda Actual
           </span>
-          <Activity className="w-4 h-4 text-blue-600 shrink-0" />
+          <Activity className="w-4 h-4 text-amber-600 shrink-0" />
         </div>
         <div>
-          <div className="font-mono text-2xl font-black text-blue-700 tracking-tight">
+          <div className="font-mono text-2xl font-black text-amber-700 tracking-tight">
             {yObs.toFixed(1)}{" "}
             <span className="text-xs font-medium text-slate-500">sol/min</span>
           </div>
@@ -88,14 +88,14 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
           </span>
           <Target
             className={`w-4 h-4 shrink-0 ${
-              yProy >= umbral ? "text-red-600" : "text-amber-600"
+              yProy >= umbral ? "text-red-600" : "text-blue-600"
             }`}
           />
         </div>
         <div>
           <div
             className={`font-mono text-2xl font-black tracking-tight ${
-              yProy >= umbral ? "text-red-700" : "text-amber-700"
+              yProy >= umbral ? "text-red-700" : "text-blue-700"
             }`}
           >
             {yProy.toFixed(1)}{" "}
@@ -116,7 +116,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
           <span className="text-xs font-semibold uppercase tracking-wider">
             Variación
           </span>
-          <TrendingUp className="w-4 h-4 text-slate-600 shrink-0" />
+          <TrendingUp className="w-4 h-4 text-amber-500 shrink-0" />
         </div>
         <div>
           <div
@@ -168,7 +168,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
           <span className="text-xs font-semibold uppercase tracking-wider">
             Avisos del Día
           </span>
-          <span className="flex h-2 w-2 rounded-full bg-blue-600 shrink-0" />
+          <span className="flex h-2.5 w-2.5 rounded-full bg-amber-400 border border-amber-600/30 shrink-0" />
         </div>
         <div>
           <div className="font-mono text-2xl font-black text-slate-900 tracking-tight">

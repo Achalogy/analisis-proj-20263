@@ -13,15 +13,15 @@ interface AlertsLogProps {
 
 export const AlertsLog: React.FC<AlertsLogProps> = ({ alertas }) => {
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm flex flex-col">
+    <div className="rounded-2xl bg-white border border-amber-300/70 p-5 shadow-sm flex flex-col">
       <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <BellRing className="w-4 h-4 text-blue-600 shrink-0" />
+          <BellRing className="w-4 h-4 text-amber-500 shrink-0" />
           <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide truncate">
             Historial de Alertas en Tiempo Real
           </h3>
         </div>
-        <span className="inline-flex items-center text-xs font-mono px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200 whitespace-nowrap shrink-0">
+        <span className="inline-flex items-center text-xs font-mono px-2.5 py-1 rounded-full bg-amber-100 text-amber-950 font-bold border border-amber-300 whitespace-nowrap shrink-0">
           {alertas.length} {alertas.length === 1 ? "evento" : "eventos"}
         </span>
       </div>
@@ -76,7 +76,7 @@ export const AlertsLog: React.FC<AlertsLogProps> = ({ alertas }) => {
                 </p>
 
                 <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-slate-200/80 text-[11px] text-slate-600">
-                  <span className="flex items-center gap-0.5 text-blue-700 font-semibold whitespace-nowrap">
+                  <span className="flex items-center gap-0.5 text-amber-800 font-semibold whitespace-nowrap">
                     <ArrowUpRight className="w-3.5 h-3.5" />
                     Hora objetivo: {item.hora_objetivo}
                   </span>

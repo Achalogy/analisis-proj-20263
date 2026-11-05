@@ -21,7 +21,7 @@ interface ControlPanelProps {
   onInjectEvent: (
     descripcion: string,
     amplitud: number,
-    duracionMinutos: number,
+    duracionMinutos: number
   ) => Promise<void>;
   estado: EstadoCiclo;
   progreso: number;
@@ -102,7 +102,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       await onInjectEvent(
         nombreEvento.trim() || "Evento externo",
         amplitudEvento,
-        duracionEvento,
+        duracionEvento
       );
     } finally {
       setEnviandoEvento(false);
@@ -111,12 +111,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      {/* Columna 1: Controles de Simulación y Velocidad (5 cols) */}
-      <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200 p-5 shadow-sm flex flex-col justify-between space-y-4">
+      <div className="lg:col-span-5 rounded-2xl bg-white border border-amber-300/80 p-5 shadow-sm flex flex-col justify-between space-y-4">
         <div>
           <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
             <div>
-              <span className="text-[11px] uppercase tracking-wider font-bold text-blue-700">
+              <span className="text-[11px] uppercase tracking-wider font-bold text-amber-700">
                 Paso 1 · Control General
               </span>
               <h2 className="text-base font-bold text-slate-900">
@@ -126,30 +125,29 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <span
               className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${
                 estado === "en_progreso"
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  ? "bg-amber-100 text-amber-900 border border-amber-300"
                   : estado === "pausada"
-                    ? "bg-amber-50 text-amber-800 border border-amber-200"
-                    : estado === "completada"
-                      ? "bg-blue-50 text-blue-700 border border-blue-200"
-                      : "bg-slate-100 text-slate-600 border border-slate-200"
+                  ? "bg-slate-900 text-amber-300 border border-slate-800"
+                  : estado === "completada"
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  : "bg-slate-100 text-slate-600 border border-slate-200"
               }`}
             >
               {estado === "en_progreso"
                 ? "En ejecución"
                 : estado === "pausada"
-                  ? "En pausa"
-                  : estado === "completada"
-                    ? "Completada"
-                    : "Lista para iniciar"}
+                ? "En pausa"
+                : estado === "completada"
+                ? "Completada"
+                : "Lista para iniciar"}
             </span>
           </div>
 
-          {/* Botones de Acción: Iniciar / Pausar / Reiniciar */}
           <div className="flex flex-wrap items-center gap-2.5 mt-4">
             {!enCursoOPausada ? (
               <button
                 onClick={onStart}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-sm active:scale-[0.99] transition-all cursor-pointer"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-slate-950 border border-amber-500/40 shadow-sm active:scale-[0.99] transition-all cursor-pointer"
               >
                 <Play className="w-4 h-4 fill-current" />
                 <span>
@@ -163,8 +161,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 onClick={onPauseToggle}
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm active:scale-[0.99] transition-all cursor-pointer ${
                   estaPausada
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    : "bg-amber-500 hover:bg-amber-600 text-slate-950"
+                    ? "bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-slate-950 border border-amber-500/40"
+                    : "bg-slate-900 hover:bg-slate-800 text-amber-400"
                 }`}
               >
                 {estaPausada ? (
@@ -184,40 +182,36 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <button
               onClick={onRestart}
               disabled={estado === "iniciada" && progreso === 0}
-              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-sm border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 transition-colors cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-sm border border-slate-300 bg-white hover:bg-amber-50 hover:border-amber-400 text-slate-800 disabled:opacity-40 transition-colors cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
               <span>Reiniciar</span>
             </button>
           </div>
 
-          {/* Barra de Progreso */}
           <div className="mt-4">
             <div className="flex justify-between text-xs text-slate-600 mb-1.5">
               <span>
                 Reloj actual:{" "}
-                <strong className="font-mono text-slate-900">
-                  {horaActual}
-                </strong>{" "}
+                <strong className="font-mono text-slate-900">{horaActual}</strong>{" "}
                 (00:00 a 24:00)
               </span>
-              <span className="font-mono font-bold text-blue-700">
+              <span className="font-mono font-bold text-amber-700">
                 {progreso.toFixed(0)}%
               </span>
             </div>
             <div className="w-full h-2.5 rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
               <div
-                className="h-full bg-blue-600 transition-all duration-200"
+                className="h-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-200"
                 style={{ width: `${Math.min(100, Math.max(0, progreso))}%` }}
               />
             </div>
           </div>
         </div>
 
-        {/* Selector de Velocidad */}
         <div className="pt-3 border-t border-slate-100">
           <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-2">
-            <Gauge className="w-3.5 h-3.5 text-blue-600" />
+            <Gauge className="w-3.5 h-3.5 text-amber-600" />
             <span>Velocidad de la simulación (duración de las 24 horas):</span>
           </label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -227,8 +221,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 onClick={() => onChangeVelocidad(v.segundos)}
                 className={`py-2 px-2.5 text-xs rounded-lg font-medium border transition-all cursor-pointer ${
                   duracionReal === v.segundos
-                    ? "border-blue-600 bg-blue-50 text-blue-800 font-bold shadow-2xs"
-                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100"
+                    ? "border-amber-500 bg-amber-400/25 text-slate-950 font-bold shadow-2xs"
+                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-amber-300 hover:bg-amber-50/50"
                 }`}
               >
                 {v.label}
@@ -238,12 +232,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
       </div>
 
-      {/* Columna 2: Enviar Evento Externo en Vivo (7 cols) */}
-      <div className="lg:col-span-7 rounded-2xl bg-white border border-slate-200 p-5 shadow-sm flex flex-col justify-between space-y-4">
+      <div className="lg:col-span-7 rounded-2xl bg-white border border-amber-300/80 p-5 shadow-sm flex flex-col justify-between space-y-4">
         <div>
           <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
             <div>
-              <span className="text-[11px] uppercase tracking-wider font-bold text-violet-700">
+              <span className="text-[11px] uppercase tracking-wider font-bold text-amber-700">
                 Paso 2 · Eventos Externos en Tiempo Real
               </span>
               <h2 className="text-base font-bold text-slate-900">
@@ -255,7 +248,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </span>
           </div>
 
-          {/* Plantillas rápidas de eventos */}
           <div className="mt-3">
             <span className="block text-xs font-semibold text-slate-600 mb-2">
               Tipo de evento rápido (o personalízalo abajo):
@@ -271,11 +263,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     onClick={() => seleccionarPreset(preset)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border text-left transition-all cursor-pointer ${
                       activo
-                        ? "border-violet-600 bg-violet-50 text-violet-900 font-bold"
-                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100"
+                        ? "border-amber-500 bg-amber-400/25 text-slate-950 font-bold"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-amber-300 hover:bg-amber-50/40"
                     }`}
                   >
-                    <Icon className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                    <Icon className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                     <span className="truncate">{preset.nombre}</span>
                   </button>
                 );
@@ -283,9 +275,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
           </div>
 
-          {/* Controles configurables claros para el usuario */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-            {/* Nombre del evento */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Nombre del evento:
@@ -295,17 +285,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 value={nombreEvento}
                 onChange={(e) => setNombreEvento(e.target.value)}
                 placeholder="Ej. Lluvia fuerte"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-violet-600 focus:outline-none"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-amber-500 focus:outline-none"
               />
             </div>
 
-            {/* Intensidad (demanda adicional) */}
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="font-semibold text-slate-700">
                   Demanda extra:
                 </span>
-                <span className="font-mono font-bold text-violet-700">
+                <span className="font-mono font-bold text-amber-700">
                   +{amplitudEvento} sol/min
                 </span>
               </div>
@@ -315,10 +304,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 max="140"
                 step="5"
                 value={amplitudEvento}
-                onChange={(e) =>
-                  setAmplitudEvento(parseInt(e.target.value, 10))
-                }
-                className="w-full accent-violet-600 cursor-pointer mt-1"
+                onChange={(e) => setAmplitudEvento(parseInt(e.target.value, 10))}
+                className="w-full accent-amber-500 cursor-pointer mt-1"
               />
               <div className="flex justify-between text-[10px] text-slate-400">
                 <span>Moderada (+25)</span>
@@ -327,7 +314,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
             </div>
 
-            {/* Duración del evento */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Duración estimada:
@@ -340,8 +326,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     onClick={() => setDuracionEvento(min)}
                     className={`py-1.5 text-xs rounded-lg border font-medium transition-all cursor-pointer ${
                       duracionEvento === min
-                        ? "border-violet-600 bg-violet-50 text-violet-800 font-bold"
-                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                        ? "border-amber-500 bg-amber-400/25 text-slate-950 font-bold"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-amber-50/40"
                     }`}
                   >
                     {min}m
@@ -352,7 +338,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
         </div>
 
-        {/* Botón para disparar el evento en ese momento + lista de eventos enviados */}
         <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
             {eventosInyectados.length === 0 ? (
@@ -369,7 +354,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 {eventosInyectados.slice(-3).map((ev) => (
                   <span
                     key={ev.id}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-800 text-[11px] font-medium whitespace-nowrap"
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-950 text-[11px] font-semibold whitespace-nowrap"
                   >
                     {ev.descripcion} ({ev.hora_inicio}, +{ev.amplitud})
                   </span>
@@ -382,7 +367,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             type="button"
             disabled={!enCursoOPausada || enviandoEvento}
             onClick={handleSendEvent}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-violet-600 hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-500 text-white shadow-sm active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap shrink-0"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-500 text-amber-400 shadow-sm active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap shrink-0"
           >
             <PlusCircle className="w-4 h-4" />
             <span>Enviar evento ahora ({horaActual})</span>
