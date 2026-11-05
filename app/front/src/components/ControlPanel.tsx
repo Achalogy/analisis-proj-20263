@@ -1,357 +1,394 @@
-import React, { useState } from 'react';
-import { Play, Square, RotateCcw, Settings, Sliders, Zap, CloudRain, Music } from 'lucide-react';
-import type { SimulacionConfig, SmoothingMethod } from './types';
+import React, { useState } from "react";
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  PlusCircle,
+  Gauge,
+  CloudRain,
+  Music,
+  Trophy,
+  AlertOctagon,
+} from "lucide-react";
+import type { EstadoCiclo, EventoInyectado } from "./types";
 
 interface ControlPanelProps {
-  config: SimulacionConfig;
-  onChangeConfig: (newConfig: SimulacionConfig) => void;
-  onStart: () => void;
-  onStop: () => void;
-  onReset: () => void;
-  isRunning: boolean;
-  progreso: number;
   duracionReal: number;
+  onChangeVelocidad: (nuevaDuracionSegundos: number) => void;
+  onStart: () => void;
+  onPauseToggle: () => void;
+  onRestart: () => void;
+  onInjectEvent: (
+    descripcion: string,
+    amplitud: number,
+    duracionMinutos: number,
+  ) => Promise<void>;
+  estado: EstadoCiclo;
+  progreso: number;
+  horaActual: string;
+  eventosInyectados: EventoInyectado[];
 }
 
+const PRESETS_EVENTOS = [
+  {
+    id: "lluvia",
+    nombre: "Lluvia fuerte",
+    amplitud: 75,
+    duracion: 60,
+    icon: CloudRain,
+  },
+  {
+    id: "concierto",
+    nombre: "Salida de concierto",
+    amplitud: 95,
+    duracion: 60,
+    icon: Music,
+  },
+  {
+    id: "partido",
+    nombre: "Partido de fútbol",
+    amplitud: 85,
+    duracion: 75,
+    icon: Trophy,
+  },
+  {
+    id: "cierre",
+    nombre: "Cierre vial inesperado",
+    amplitud: 55,
+    duracion: 45,
+    icon: AlertOctagon,
+  },
+];
+
+const VELOCIDADES = [
+  { label: "Muy rápida (15 s)", segundos: 15 },
+  { label: "Rápida (30 s)", segundos: 30 },
+  { label: "Normal (60 s)", segundos: 60 },
+  { label: "Detallada (120 s)", segundos: 120 },
+];
+
+const DURACIONES_EVENTO = [30, 45, 60, 90, 120];
+
 export const ControlPanel: React.FC<ControlPanelProps> = ({
-  config,
-  onChangeConfig,
+  duracionReal,
+  onChangeVelocidad,
   onStart,
-  onStop,
-  onReset,
-  isRunning,
+  onPauseToggle,
+  onRestart,
+  onInjectEvent,
+  estado,
   progreso,
+  horaActual,
+  eventosInyectados,
 }) => {
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [incluirLluvia, setIncluirLluvia] = useState(true);
-  const [incluirConcierto, setIncluirConcierto] = useState(true);
+  const [nombreEvento, setNombreEvento] = useState<string>("Lluvia fuerte");
+  const [amplitudEvento, setAmplitudEvento] = useState<number>(75);
+  const [duracionEvento, setDuracionEvento] = useState<number>(60);
+  const [enviandoEvento, setEnviandoEvento] = useState<boolean>(false);
 
-  // Quick duration presets
-  const duraciones = [
-    { label: 'Turbo (15s)', val: 15 },
-    { label: 'Rápida (30s)', val: 30 },
-    { label: '1 Minuto (60s) ★', val: 60 },
-    { label: 'Pausada (120s)', val: 120 },
-  ];
+  const enCursoOPausada = estado === "en_progreso" || estado === "pausada";
+  const estaPausada = estado === "pausada";
 
-  const updateConfig = (patch: Partial<SimulacionConfig>) => {
-    onChangeConfig({ ...config, ...patch });
+  const seleccionarPreset = (preset: (typeof PRESETS_EVENTOS)[number]) => {
+    setNombreEvento(preset.nombre);
+    setAmplitudEvento(preset.amplitud);
+    setDuracionEvento(preset.duracion);
   };
 
-  const toggleEventos = (lluvia: boolean, concierto: boolean) => {
-    setIncluirLluvia(lluvia);
-    setIncluirConcierto(concierto);
-
-    const evs = [];
-    if (lluvia) {
-      evs.push({
-        descripcion: 'Aguacero en hora pico matutina',
-        centro_h: 8.0,
-        ancho_h: 0.6,
-        amplitud: 70.0,
-      });
+  const handleSendEvent = async () => {
+    if (!enCursoOPausada || enviandoEvento) return;
+    setEnviandoEvento(true);
+    try {
+      await onInjectEvent(
+        nombreEvento.trim() || "Evento externo",
+        amplitudEvento,
+        duracionEvento,
+      );
+    } finally {
+      setEnviandoEvento(false);
     }
-    if (concierto) {
-      evs.push({
-        descripcion: 'Salida de concierto (Movistar Arena)',
-        centro_h: 19.0,
-        ancho_h: 0.5,
-        amplitud: 90.0,
-      });
-    }
-    updateConfig({ eventos: evs });
   };
 
   return (
-    <div className="rounded-2xl bg-slate-900/90 border border-amber-500/30 p-5 shadow-2xl backdrop-blur-md">
-      {/* Top Banner with Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      {/* Columna 1: Controles de Simulación y Velocidad (5 cols) */}
+      <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200 p-5 shadow-sm flex flex-col justify-between space-y-4">
         <div>
-          <span className="text-xs uppercase tracking-wider font-semibold text-amber-400/90">
-            Panel de Despacho & Control
-          </span>
-          <h2 className="text-lg font-black text-white flex items-center gap-2">
-            Simulador de Demanda 24 Horas
-          </h2>
-        </div>
-
-        {/* Primary Controls */}
-        <div className="flex items-center gap-2.5">
-          {!isRunning ? (
-            <button
-              onClick={onStart}
-              className="group flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer"
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div>
+              <span className="text-[11px] uppercase tracking-wider font-bold text-blue-700">
+                Paso 1 · Control General
+              </span>
+              <h2 className="text-base font-bold text-slate-900">
+                Simulación del Día (24 Horas)
+              </h2>
+            </div>
+            <span
+              className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${
+                estado === "en_progreso"
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  : estado === "pausada"
+                    ? "bg-amber-50 text-amber-800 border border-amber-200"
+                    : estado === "completada"
+                      ? "bg-blue-50 text-blue-700 border border-blue-200"
+                      : "bg-slate-100 text-slate-600 border border-slate-200"
+              }`}
             >
-              <Play className="w-4 h-4 fill-current group-hover:scale-110 transition-transform" />
-              <span>Iniciar Simulación</span>
-            </button>
-          ) : (
-            <button
-              onClick={onStop}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/30 active:scale-95 transition-all cursor-pointer"
-            >
-              <Square className="w-4 h-4 fill-current" />
-              <span>Detener</span>
-            </button>
-          )}
+              {estado === "en_progreso"
+                ? "En ejecución"
+                : estado === "pausada"
+                  ? "En pausa"
+                  : estado === "completada"
+                    ? "Completada"
+                    : "Lista para iniciar"}
+            </span>
+          </div>
 
-          <button
-            onClick={onReset}
-            disabled={isRunning}
-            title="Reiniciar a valores iniciales"
-            className="flex items-center justify-center p-2.5 rounded-xl border border-slate-700 hover:border-amber-500/50 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-amber-400 disabled:opacity-40 transition-colors cursor-pointer"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-              showAdvanced
-                ? 'border-amber-400/70 bg-amber-400/10 text-amber-300'
-                : 'border-slate-700 bg-slate-800/60 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Configuración</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Progress Line */}
-      <div className="mt-4 mb-4">
-        <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-          <span>Progreso del Día (00:00 → 24:00)</span>
-          <span className="font-mono text-amber-400 font-bold">{progreso.toFixed(1)}%</span>
-        </div>
-        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-300 shadow-sm shadow-amber-400/50"
-            style={{ width: `${Math.min(100, Math.max(0, progreso))}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Quick Duration & Method Selectors */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-        {/* Duración Real */}
-        <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1.5">
-            Duración Real de las 24 horas:
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-            {duraciones.map((d) => (
+          {/* Botones de Acción: Iniciar / Pausar / Reiniciar */}
+          <div className="flex flex-wrap items-center gap-2.5 mt-4">
+            {!enCursoOPausada ? (
               <button
-                key={d.val}
-                disabled={isRunning}
-                onClick={() => updateConfig({ duracion_real_segundos: d.val })}
-                className={`py-1.5 px-2 text-xs rounded-lg font-medium border transition-all cursor-pointer ${
-                  config.duracion_real_segundos === d.val
-                    ? 'border-amber-400 bg-amber-500/20 text-amber-300 font-bold'
-                    : 'border-slate-800 bg-slate-800/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                onClick={onStart}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-sm active:scale-[0.99] transition-all cursor-pointer"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                <span>
+                  {estado === "completada"
+                    ? "Volver a Simular"
+                    : "Iniciar Simulación"}
+                </span>
+              </button>
+            ) : (
+              <button
+                onClick={onPauseToggle}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm active:scale-[0.99] transition-all cursor-pointer ${
+                  estaPausada
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : "bg-amber-500 hover:bg-amber-600 text-slate-950"
                 }`}
               >
-                {d.label}
+                {estaPausada ? (
+                  <>
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Reanudar Simulación</span>
+                  </>
+                ) : (
+                  <>
+                    <Pause className="w-4 h-4 fill-current" />
+                    <span>Pausar</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            <button
+              onClick={onRestart}
+              disabled={estado === "iniciada" && progreso === 0}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-sm border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Reiniciar</span>
+            </button>
+          </div>
+
+          {/* Barra de Progreso */}
+          <div className="mt-4">
+            <div className="flex justify-between text-xs text-slate-600 mb-1.5">
+              <span>
+                Reloj actual:{" "}
+                <strong className="font-mono text-slate-900">
+                  {horaActual}
+                </strong>{" "}
+                (00:00 a 24:00)
+              </span>
+              <span className="font-mono font-bold text-blue-700">
+                {progreso.toFixed(0)}%
+              </span>
+            </div>
+            <div className="w-full h-2.5 rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
+              <div
+                className="h-full bg-blue-600 transition-all duration-200"
+                style={{ width: `${Math.min(100, Math.max(0, progreso))}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Selector de Velocidad */}
+        <div className="pt-3 border-t border-slate-100">
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-2">
+            <Gauge className="w-3.5 h-3.5 text-blue-600" />
+            <span>Velocidad de la simulación (duración de las 24 horas):</span>
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {VELOCIDADES.map((v) => (
+              <button
+                key={v.segundos}
+                onClick={() => onChangeVelocidad(v.segundos)}
+                className={`py-2 px-2.5 text-xs rounded-lg font-medium border transition-all cursor-pointer ${
+                  duracionReal === v.segundos
+                    ? "border-blue-600 bg-blue-50 text-blue-800 font-bold shadow-2xs"
+                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100"
+                }`}
+              >
+                {v.label}
               </button>
             ))}
           </div>
         </div>
-
-        {/* Método de Filtrado */}
-        <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1.5">
-            Método de Suavizado de la Desviación:
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-            {(
-              [
-                { id: 'holt', label: 'Holt (Doble)' },
-                { id: 'ses', label: 'SES (Simple)' },
-                { id: 'wma', label: 'WMA (Móvil)' },
-                { id: 'spline', label: 'Solo Spline' },
-              ] as const
-            ).map((m) => (
-              <button
-                key={m.id}
-                disabled={isRunning}
-                onClick={() => updateConfig({ metodo: m.id as SmoothingMethod })}
-                className={`py-1.5 px-2 text-xs rounded-lg font-medium border transition-all cursor-pointer ${
-                  config.metodo === m.id
-                    ? 'border-amber-400 bg-amber-500/20 text-amber-300 font-bold'
-                    : 'border-slate-800 bg-slate-800/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
-      {/* Advanced Drawer */}
-      {showAdvanced && (
-        <div className="mt-5 pt-4 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-2 duration-200 text-xs">
-          {/* Parámetros de Suavizado */}
-          <div className="space-y-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-            <span className="font-bold text-amber-400 flex items-center gap-1.5">
-              <Sliders className="w-3.5 h-3.5" /> Parámetros del Filtro
-            </span>
+      {/* Columna 2: Enviar Evento Externo en Vivo (7 cols) */}
+      <div className="lg:col-span-7 rounded-2xl bg-white border border-slate-200 p-5 shadow-sm flex flex-col justify-between space-y-4">
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
             <div>
-              <div className="flex justify-between text-slate-400 mb-1">
-                <span>Alpha (α):</span>
-                <span className="font-mono text-amber-300">{config.alpha}</span>
-              </div>
-              <input
-                type="range"
-                min="0.05"
-                max="0.8"
-                step="0.05"
-                disabled={isRunning}
-                value={config.alpha}
-                onChange={(e) => updateConfig({ alpha: parseFloat(e.target.value) })}
-                className="w-full accent-amber-400 cursor-pointer"
-              />
+              <span className="text-[11px] uppercase tracking-wider font-bold text-violet-700">
+                Paso 2 · Eventos Externos en Tiempo Real
+              </span>
+              <h2 className="text-base font-bold text-slate-900">
+                Configurar y Enviar un Evento a la Ciudad
+              </h2>
             </div>
-            {config.metodo === 'holt' && (
-              <div>
-                <div className="flex justify-between text-slate-400 mb-1">
-                  <span>Beta (β):</span>
-                  <span className="font-mono text-amber-300">{config.beta}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.01"
-                  max="0.3"
-                  step="0.01"
-                  disabled={isRunning}
-                  value={config.beta}
-                  onChange={(e) => updateConfig({ beta: parseFloat(e.target.value) })}
-                  className="w-full accent-amber-400 cursor-pointer"
-                />
-              </div>
-            )}
-            {config.metodo === 'wma' && (
-              <div>
-                <div className="flex justify-between text-slate-400 mb-1">
-                  <span>Ventana N:</span>
-                  <span className="font-mono text-amber-300">{config.ventana_wma}</span>
-                </div>
-                <input
-                  type="range"
-                  min="5"
-                  max="45"
-                  step="5"
-                  disabled={isRunning}
-                  value={config.ventana_wma}
-                  onChange={(e) => updateConfig({ ventana_wma: parseInt(e.target.value) })}
-                  className="w-full accent-amber-400 cursor-pointer"
-                />
-              </div>
-            )}
+            <span className="text-xs text-slate-500">
+              Aumenta la demanda de taxis en el momento actual ({horaActual})
+            </span>
           </div>
 
-          {/* Umbral y Alertas */}
-          <div className="space-y-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-            <span className="font-bold text-red-400 flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5" /> Umbral y Alertas
+          {/* Plantillas rápidas de eventos */}
+          <div className="mt-3">
+            <span className="block text-xs font-semibold text-slate-600 mb-2">
+              Tipo de evento rápido (o personalízalo abajo):
             </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {PRESETS_EVENTOS.map((preset) => {
+                const Icon = preset.icon;
+                const activo = nombreEvento === preset.nombre;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => seleccionarPreset(preset)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border text-left transition-all cursor-pointer ${
+                      activo
+                        ? "border-violet-600 bg-violet-50 text-violet-900 font-bold"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100"
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                    <span className="truncate">{preset.nombre}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Controles configurables claros para el usuario */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+            {/* Nombre del evento */}
             <div>
-              <div className="flex justify-between text-slate-400 mb-1">
-                <span>Umbral de Despacho:</span>
-                <span className="font-mono text-red-400 font-bold">{config.umbral} sol/m</span>
-              </div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Nombre del evento:
+              </label>
               <input
-                type="number"
-                min="50"
-                max="200"
-                disabled={isRunning}
-                value={config.umbral}
-                onChange={(e) => updateConfig({ umbral: parseFloat(e.target.value) || 150 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono"
+                type="text"
+                value={nombreEvento}
+                onChange={(e) => setNombreEvento(e.target.value)}
+                placeholder="Ej. Lluvia fuerte"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-violet-600 focus:outline-none"
               />
             </div>
+
+            {/* Intensidad (demanda adicional) */}
             <div>
-              <div className="flex justify-between text-slate-400 mb-1">
-                <span>Horizonte Predictivo:</span>
-                <span className="font-mono text-amber-300">{config.horizonte_min} min</span>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-semibold text-slate-700">
+                  Demanda extra:
+                </span>
+                <span className="font-mono font-bold text-violet-700">
+                  +{amplitudEvento} sol/min
+                </span>
               </div>
               <input
                 type="range"
-                min="10"
-                max="60"
+                min="25"
+                max="140"
                 step="5"
-                disabled={isRunning}
-                value={config.horizonte_min}
-                onChange={(e) => updateConfig({ horizonte_min: parseInt(e.target.value) })}
-                className="w-full accent-amber-400 cursor-pointer"
+                value={amplitudEvento}
+                onChange={(e) =>
+                  setAmplitudEvento(parseInt(e.target.value, 10))
+                }
+                className="w-full accent-violet-600 cursor-pointer mt-1"
               />
-            </div>
-          </div>
-
-          {/* Eventos Imprevistos */}
-          <div className="space-y-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-            <span className="font-bold text-sky-400 flex items-center gap-1.5">
-              Eventos Simulados
-            </span>
-            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-              <input
-                type="checkbox"
-                disabled={isRunning}
-                checked={incluirLluvia}
-                onChange={(e) => toggleEventos(e.target.checked, incluirConcierto)}
-                className="rounded accent-amber-400"
-              />
-              <CloudRain className="w-3.5 h-3.5 text-sky-400" />
-              <span>Aguacero (08:00, +70 sol)</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-              <input
-                type="checkbox"
-                disabled={isRunning}
-                checked={incluirConcierto}
-                onChange={(e) => toggleEventos(incluirLluvia, e.target.checked)}
-                className="rounded accent-amber-400"
-              />
-              <Music className="w-3.5 h-3.5 text-purple-400" />
-              <span>Concierto (19:00, +90 sol)</span>
-            </label>
-          </div>
-
-          {/* Ruido Estocástico */}
-          <div className="space-y-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-            <span className="font-bold text-slate-300">Fluctuación en Tiempo Real</span>
-            <div>
-              <div className="flex justify-between text-slate-400 mb-1">
-                <span>Ruido Rápido (σ):</span>
-                <span className="font-mono text-amber-300">{config.sigma_rapido} sol/m</span>
+              <div className="flex justify-between text-[10px] text-slate-400">
+                <span>Moderada (+25)</span>
+                <span>Alta (+80)</span>
+                <span>Masiva (+140)</span>
               </div>
-              <input
-                type="range"
-                min="0"
-                max="10"
-                step="0.5"
-                disabled={isRunning}
-                value={config.sigma_rapido}
-                onChange={(e) => updateConfig({ sigma_rapido: parseFloat(e.target.value) })}
-                className="w-full accent-amber-400 cursor-pointer"
-              />
             </div>
+
+            {/* Duración del evento */}
             <div>
-              <div className="flex justify-between text-slate-400 mb-1">
-                <span>Semilla RNG:</span>
-                <span className="font-mono text-amber-300">{config.semilla}</span>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Duración estimada:
+              </label>
+              <div className="grid grid-cols-5 gap-1">
+                {DURACIONES_EVENTO.map((min) => (
+                  <button
+                    key={min}
+                    type="button"
+                    onClick={() => setDuracionEvento(min)}
+                    className={`py-1.5 text-xs rounded-lg border font-medium transition-all cursor-pointer ${
+                      duracionEvento === min
+                        ? "border-violet-600 bg-violet-50 text-violet-800 font-bold"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {min}m
+                  </button>
+                ))}
               </div>
-              <input
-                type="number"
-                disabled={isRunning}
-                value={config.semilla}
-                onChange={(e) => updateConfig({ semilla: parseInt(e.target.value) || 2026 })}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono"
-              />
             </div>
           </div>
         </div>
-      )}
+
+        {/* Botón para disparar el evento en ese momento + lista de eventos enviados */}
+        <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+            {eventosInyectados.length === 0 ? (
+              <span>
+                {enCursoOPausada
+                  ? "Pulsa el botón para lanzar este evento ahora mismo en la gráfica."
+                  : "Inicia la simulación para poder enviar eventos en vivo."}
+              </span>
+            ) : (
+              <>
+                <span className="font-semibold text-slate-700 mr-1">
+                  Enviados hoy:
+                </span>
+                {eventosInyectados.slice(-3).map((ev) => (
+                  <span
+                    key={ev.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-800 text-[11px] font-medium whitespace-nowrap"
+                  >
+                    {ev.descripcion} ({ev.hora_inicio}, +{ev.amplitud})
+                  </span>
+                ))}
+              </>
+            )}
+          </div>
+
+          <button
+            type="button"
+            disabled={!enCursoOPausada || enviandoEvento}
+            onClick={handleSendEvent}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-violet-600 hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-500 text-white shadow-sm active:scale-[0.99] transition-all cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Enviar evento ahora ({horaActual})</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

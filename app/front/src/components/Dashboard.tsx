@@ -1,19 +1,20 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { SimulationChart } from './SimulationChart';
-import { ControlPanel } from './ControlPanel';
-import { KpiCards } from './KpiCards';
-import { AlertsLog } from './AlertsLog';
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { SimulationChart } from "./SimulationChart";
+import { ControlPanel } from "./ControlPanel";
+import { KpiCards } from "./KpiCards";
+import { AlertsLog } from "./AlertsLog";
 import type {
   SimulacionConfig,
   PuntoPaso,
   AlertaItem,
-  EstadoSimulacion,
-} from './types';
-import { Car, Radio, Shield, HelpCircle, RefreshCw } from 'lucide-react';
+  EstadoCiclo,
+  EventoInyectado,
+} from "./types";
+import { Car, Radio, Shield } from "lucide-react";
 
 const DEFAULT_CONFIG: SimulacionConfig = {
   duracion_real_segundos: 60.0,
-  metodo: 'holt',
+  metodo: "holt",
   alpha: 0.2,
   beta: 0.05,
   phi: 0.9,
@@ -26,38 +27,92 @@ const DEFAULT_CONFIG: SimulacionConfig = {
   sigma_rapido: 4.0,
   sigma_lento: 1.2,
   phi_ar1: 0.985,
-  eventos: [
-    {
-      descripcion: 'Aguacero en hora pico matutina',
-      centro_h: 8.0,
-      ancho_h: 0.6,
-      amplitud: 70.0,
-    },
-    {
-      descripcion: 'Salida de concierto (Movistar Arena)',
-      centro_h: 19.0,
-      ancho_h: 0.5,
-      amplitud: 90.0,
-    },
-  ],
+  eventos: [],
 };
 
-const API_BASE = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000/ws/simulacion';
+const API_BASE = "http://localhost:8000";
+const WS_URL = "ws://localhost:8000/ws/simulacion";
 
 export const Dashboard: React.FC = () => {
   const [config, setConfig] = useState<SimulacionConfig>(DEFAULT_CONFIG);
+  const [baseSpline, setBaseSpline] = useState<number[]>([]);
   const [historial, setHistorial] = useState<PuntoPaso[]>([]);
   const [alertas, setAlertas] = useState<AlertaItem[]>([]);
+  const [eventosInyectados, setEventosInyectados] = useState<EventoInyectado[]>(
+    [],
+  );
   const [ultimoPaso, setUltimoPaso] = useState<PuntoPaso | null>(null);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [estado, setEstado] = useState<EstadoCiclo>("iniciada");
   const [progreso, setProgreso] = useState<number>(0);
   const [tiempoTranscurrido, setTiempoTranscurrido] = useState<number>(0);
   const [connected, setConnected] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'simulador' | 'teoria'>('simulador');
+  const [activeTab, setActiveTab] = useState<"simulador" | "teoria">(
+    "simulador",
+  );
 
   const wsRef = useRef<WebSocket | null>(null);
-  const timerRef = useRef<any>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pasosBufferRef = useRef<PuntoPaso[]>([]);
+  const alertasBufferRef = useRef<AlertaItem[]>([]);
+  const rafIdRef = useRef<number | null>(null);
+
+  // Flush buffered WebSocket steps on animation frame so UI never lags behind the backend
+  const flushBuffers = useCallback(() => {
+    rafIdRef.current = null;
+    if (pasosBufferRef.current.length > 0) {
+      const nuevosPasos = pasosBufferRef.current;
+      pasosBufferRef.current = [];
+      const ultimo = nuevosPasos[nuevosPasos.length - 1];
+      setUltimoPaso(ultimo);
+      setHistorial((prev) => [...prev, ...nuevosPasos]);
+      setProgreso(((ultimo.minuto + 1) / 1440) * 100);
+    }
+    if (alertasBufferRef.current.length > 0) {
+      const nuevasAlertas = alertasBufferRef.current;
+      alertasBufferRef.current = [];
+      setAlertas((prev) => [...prev, ...nuevasAlertas]);
+    }
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(flushBuffers);
+    }
+  }, [flushBuffers]);
+
+  // Load 24h base spline on initial mount
+  useEffect(() => {
+    fetch(`${API_BASE}/simulacion/base`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.base_spline)) {
+          setBaseSpline(data.base_spline);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Manage elapsed real-time clock while estado === 'en_progreso'
+  useEffect(() => {
+    if (estado === "en_progreso") {
+      let lastTick = performance.now();
+      timerRef.current = setInterval(() => {
+        const now = performance.now();
+        const dt = (now - lastTick) / 1000;
+        lastTick = now;
+        setTiempoTranscurrido((prev) => prev + dt);
+      }, 100);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [estado]);
 
   // Close WS helper
   const disconnectWs = useCallback(() => {
@@ -65,6 +120,7 @@ export const Dashboard: React.FC = () => {
       wsRef.current.close();
       wsRef.current = null;
     }
+    setConnected(false);
   }, []);
 
   // Connect to live WebSocket stream
@@ -82,37 +138,58 @@ export const Dashboard: React.FC = () => {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.tipo === 'paso' && msg.datos) {
+          if (msg.tipo === "estado_inicial") {
+            if (Array.isArray(msg.base_spline) && msg.base_spline.length > 0) {
+              setBaseSpline(msg.base_spline);
+            }
+            if (Array.isArray(msg.historial) && msg.historial.length > 0) {
+              setHistorial(msg.historial);
+              const ult = msg.historial[msg.historial.length - 1];
+              setUltimoPaso(ult);
+              setProgreso(((ult.minuto + 1) / 1440) * 100);
+            }
+            if (Array.isArray(msg.eventos_inyectados)) {
+              setEventosInyectados(msg.eventos_inyectados);
+            }
+          } else if (msg.tipo === "paso" && msg.datos) {
             const paso: PuntoPaso = msg.datos;
-            setUltimoPaso(paso);
-            setHistorial((prev) => [...prev, paso]);
-            setProgreso(((paso.minuto + 1) / 1440) * 100);
+            pasosBufferRef.current.push(paso);
 
             if (paso.evento_alerta) {
               const alerta = paso.evento_alerta;
-              setAlertas((prev) => [
-                ...prev,
-                {
-                  id: `${alerta.tipo}-${alerta.minuto_emision}-${Date.now()}`,
-                  tipo: alerta.tipo,
-                  minuto_emision: alerta.minuto_emision,
-                  hora_emision: alerta.hora_emision,
-                  minuto_objetivo: alerta.minuto_objetivo,
-                  hora_objetivo: alerta.hora_objetivo,
-                  y_proy: alerta.y_proy,
-                  exceso: alerta.exceso,
-                  mensaje: alerta.mensaje,
-                  timestamp: new Date().toLocaleTimeString(),
-                },
-              ]);
+              alertasBufferRef.current.push({
+                id: `${alerta.tipo}-${alerta.minuto_emision}-${Math.random()
+                  .toString(36)
+                  .slice(2, 7)}`,
+                tipo: alerta.tipo,
+                minuto_emision: alerta.minuto_emision,
+                hora_emision: alerta.hora_emision,
+                minuto_objetivo: alerta.minuto_objetivo,
+                hora_objetivo: alerta.hora_objetivo,
+                y_proy: alerta.y_proy,
+                exceso: alerta.exceso,
+                mensaje: alerta.mensaje,
+                timestamp: new Date().toLocaleTimeString(),
+              });
             }
-          } else if (msg.tipo === 'fin') {
-            setIsRunning(false);
-            setProgreso(100);
+            scheduleFlush();
+          } else if (msg.tipo === "evento_inyectado" && msg.evento) {
+            setEventosInyectados((prev) => {
+              if (prev.some((e) => e.id === msg.evento.id)) return prev;
+              return [...prev, msg.evento];
+            });
+          } else if (msg.tipo === "estado_cambio" && msg.estado) {
+            setEstado(msg.estado);
+          } else if (msg.tipo === "fin") {
+            flushBuffers();
+            setEstado(msg.estado === "detenida" ? "detenida" : "completada");
+            if (msg.estado !== "detenida") {
+              setProgreso(100);
+            }
             disconnectWs();
           }
         } catch (e) {
-          console.error('Error parseando websocket msg', e);
+          console.error("Error procesando mensaje WebSocket", e);
         }
       };
 
@@ -124,166 +201,234 @@ export const Dashboard: React.FC = () => {
         setConnected(false);
       };
     } catch (err) {
-      console.warn('No se pudo conectar WebSocket al backend:', err);
+      console.warn("No se pudo conectar WebSocket al backend:", err);
     }
-  }, [disconnectWs]);
+  }, [disconnectWs, flushBuffers, scheduleFlush]);
 
   // Start Simulation
   const handleStart = async () => {
     try {
+      pasosBufferRef.current = [];
+      alertasBufferRef.current = [];
       setHistorial([]);
       setAlertas([]);
+      setEventosInyectados([]);
       setUltimoPaso(null);
       setProgreso(0);
       setTiempoTranscurrido(0);
 
+      const payload: SimulacionConfig = {
+        ...config,
+        metodo: "holt",
+        eventos: [],
+      };
+
       const resp = await fetch(`${API_BASE}/simulacion/iniciar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
       if (!resp.ok) {
         throw new Error(`Error en API: ${resp.statusText}`);
       }
 
-      setIsRunning(true);
+      setEstado("en_progreso");
       connectWs();
-
-      const startTime = Date.now();
-      clearInterval(timerRef.current);
-      timerRef.current = setInterval(() => {
-        setTiempoTranscurrido((Date.now() - startTime) / 1000);
-      }, 100);
     } catch (err) {
-      alert(`No se pudo iniciar la simulación. Asegúrate de que el backend esté corriendo en ${API_BASE}.\n\nComando: uv run uvicorn app.back.main:app --reload --port 8000`);
+      alert(
+        `No se pudo iniciar la simulación. Verifica que el servidor backend esté activo en ${API_BASE}.\n\nComando: uv run uvicorn app.back.main:app --reload --port 8000`,
+      );
       console.error(err);
-      setIsRunning(false);
+      setEstado("iniciada");
     }
   };
 
-  // Stop Simulation
-  const handleStop = async () => {
+  // Pause / Resume Simulation
+  const handlePauseToggle = async () => {
     try {
-      await fetch(`${API_BASE}/simulacion/detener`, { method: 'POST' });
+      if (estado === "en_progreso") {
+        const r = await fetch(`${API_BASE}/simulacion/pausar`, {
+          method: "POST",
+        });
+        if (r.ok) {
+          setEstado("pausada");
+        }
+      } else if (estado === "pausada") {
+        const r = await fetch(`${API_BASE}/simulacion/reanudar`, {
+          method: "POST",
+        });
+        if (r.ok) {
+          setEstado("en_progreso");
+        }
+      }
     } catch (err) {
-      console.warn('Error deteniendo simulación:', err);
+      console.warn("Error al pausar/reanudar:", err);
     }
-    setIsRunning(false);
-    clearInterval(timerRef.current);
-    disconnectWs();
   };
 
-  // Reset
-  const handleReset = () => {
-    handleStop();
+  // Restart Simulation (resets and starts fresh from 00:00)
+  const handleRestart = async () => {
+    try {
+      await fetch(`${API_BASE}/simulacion/detener`, { method: "POST" });
+    } catch (_) {}
+    disconnectWs();
+    pasosBufferRef.current = [];
+    alertasBufferRef.current = [];
     setHistorial([]);
     setAlertas([]);
+    setEventosInyectados([]);
     setUltimoPaso(null);
     setProgreso(0);
     setTiempoTranscurrido(0);
+    setEstado("iniciada");
   };
 
-  // Poll status occasionally to keep in sync if WS disconnects
-  useEffect(() => {
-    if (!isRunning) return;
-    const interval = setInterval(async () => {
+  // Change Simulation Speed
+  const handleChangeVelocidad = async (nuevaDuracionSegundos: number) => {
+    setConfig((prev) => ({
+      ...prev,
+      duracion_real_segundos: nuevaDuracionSegundos,
+    }));
+    if (estado === "en_progreso" || estado === "pausada") {
       try {
-        const r = await fetch(`${API_BASE}/simulacion/estado`);
-        if (r.ok) {
-          const st: EstadoSimulacion = await r.json();
-          if (st.estado === 'completada' || st.estado === 'detenida') {
-            setIsRunning(false);
-            clearInterval(timerRef.current);
-            disconnectWs();
-          }
-        }
-      } catch (_) {}
-    }, 1500);
+        await fetch(`${API_BASE}/simulacion/velocidad`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            duracion_real_segundos: nuevaDuracionSegundos,
+          }),
+        });
+      } catch (err) {
+        console.warn("No se pudo actualizar velocidad en vivo:", err);
+      }
+    }
+  };
 
-    return () => clearInterval(interval);
-  }, [isRunning, disconnectWs]);
+  // Inject Live External Event right at the current simulation minute
+  const handleInjectEvent = async (
+    descripcion: string,
+    amplitud: number,
+    duracionMinutos: number,
+  ) => {
+    try {
+      const resp = await fetch(`${API_BASE}/simulacion/evento`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          descripcion,
+          amplitud,
+          duracion_minutos: duracionMinutos,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.evento) {
+          setEventosInyectados((prev) => {
+            if (prev.some((e) => e.id === data.evento.id)) return prev;
+            return [...prev, data.evento];
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Error enviando evento en vivo:", err);
+    }
+  };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      clearInterval(timerRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
       disconnectWs();
     };
   }, [disconnectWs]);
 
   return (
-    <div className="min-h-screen bg-[#090d16] text-slate-100 selection:bg-amber-500 selection:text-black">
-      {/* Top Taxi Checkered Ribbon */}
-      <div className="h-2 w-full bg-[repeating-linear-gradient(45deg,#f59e0b,#f59e0b_12px,#0f172a_12px,#0f172a_24px)] opacity-90" />
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      {/* Top Accent Bar */}
+      <div className="h-1.5 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-amber-500" />
 
       {/* Main Navbar */}
-      <header className="border-b border-amber-500/20 bg-slate-950/80 backdrop-blur-md sticky top-0 z-40">
+      <header className="border-b border-slate-200 bg-white sticky top-0 z-40 shadow-2xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
           {/* Logo & Brand */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 shadow-lg shadow-amber-500/20 font-black text-xl">
-              🚕
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 text-white shadow-xs">
+              <Car className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-1.5">
-                  AutoMove <span className="text-amber-400">City</span>
+                <h1 className="text-xl font-black tracking-tight text-slate-900">
+                  AutoMove <span className="text-blue-600">City</span>
                 </h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-400/10 text-amber-300 border border-amber-400/30 uppercase tracking-wider">
-                  Despacho Inteligente
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
+                  Despacho Preventivo
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                Flota de 200 taxis autónomos en Bogotá · Splines Cúbicos & Filtro Predictivo
+              <p className="text-xs text-slate-500">
+                Monitoreo y predicción de demanda para flota de 200 taxis
+                autónomos
               </p>
             </div>
           </div>
 
-          {/* Connection Badge & Tabs */}
+          {/* Connection Status & View Tabs */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-medium text-slate-700">
               <span
                 className={`w-2 h-2 rounded-full ${
-                  connected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                  connected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
                 }`}
               />
-              <span className="text-slate-300">
-                {connected ? 'WS Conectado (8000)' : 'API Standby'}
-              </span>
+              <span>{connected ? "Conectado en vivo" : "En espera"}</span>
             </div>
 
-            <nav className="flex rounded-xl bg-slate-900 p-1 border border-slate-800 text-xs font-semibold">
+            <nav className="flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-semibold">
               <button
-                onClick={() => setActiveTab('simulador')}
+                onClick={() => setActiveTab("simulador")}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  activeTab === 'simulador'
-                    ? 'bg-amber-400 text-slate-950 shadow font-bold'
-                    : 'text-slate-400 hover:text-white'
+                  activeTab === "simulador"
+                    ? "bg-white text-slate-900 shadow-2xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 Simulador en Vivo
               </button>
               <button
-                onClick={() => setActiveTab('teoria')}
+                onClick={() => setActiveTab("teoria")}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  activeTab === 'teoria'
-                    ? 'bg-amber-400 text-slate-950 shadow font-bold'
-                    : 'text-slate-400 hover:text-white'
+                  activeTab === "teoria"
+                    ? "bg-white text-slate-900 shadow-2xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                Rigor Numérico
+                Detalles del Modelo
               </button>
             </nav>
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
+      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {activeTab === 'simulador' ? (
+        {activeTab === "simulador" ? (
           <>
-            {/* KPI Cards */}
+            {/* Control Panel: Speed, Start/Pause/Restart, and Live Event Injection */}
+            <ControlPanel
+              duracionReal={config.duracion_real_segundos}
+              onChangeVelocidad={handleChangeVelocidad}
+              onStart={handleStart}
+              onPauseToggle={handlePauseToggle}
+              onRestart={handleRestart}
+              onInjectEvent={handleInjectEvent}
+              estado={estado}
+              progreso={progreso}
+              horaActual={ultimoPaso?.hora || "00:00"}
+              eventosInyectados={eventosInyectados}
+            />
+
+            {/* KPI Summary Cards */}
             <KpiCards
               ultimoPaso={ultimoPaso}
               enAlerta={ultimoPaso?.alerta_activa ?? false}
@@ -293,91 +438,89 @@ export const Dashboard: React.FC = () => {
               tiempoTranscurrido={tiempoTranscurrido}
             />
 
-            {/* Control Panel */}
-            <ControlPanel
-              config={config}
-              onChangeConfig={setConfig}
-              onStart={handleStart}
-              onStop={handleStop}
-              onReset={handleReset}
-              isRunning={isRunning}
-              progreso={progreso}
-              duracionReal={config.duracion_real_segundos}
+            {/* Full-Width 24-Hour Simulation Chart */}
+            <SimulationChart
+              historial={historial}
+              baseSpline={baseSpline}
+              eventosInyectados={eventosInyectados}
+              umbral={config.umbral}
+              minutoActual={ultimoPaso?.minuto ?? 0}
+              alertaActiva={ultimoPaso?.alerta_activa ?? false}
             />
 
-            {/* Chart & Alerts Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Live Canvas Chart (2 cols) */}
-              <div className="lg:col-span-2">
-                <SimulationChart
-                  historial={historial}
-                  baseSpline={[]}
-                  umbral={config.umbral}
-                  minutoActual={ultimoPaso?.minuto ?? 0}
-                  alertaActiva={ultimoPaso?.alerta_activa ?? false}
-                />
-              </div>
-
-              {/* Real-time Alerts Log (1 col) */}
-              <div className="lg:col-span-1">
-                <AlertsLog alertas={alertas} />
-              </div>
-            </div>
+            {/* Real-Time Alerts Log */}
+            <AlertsLog alertas={alertas} />
           </>
         ) : (
-          /* Tab: Rigor Numérico / Shark Tank Details */
+          /* Tab: Detalles del Modelo */
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-6 rounded-2xl bg-slate-900 border border-amber-500/20 space-y-4">
-              <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
-                <Shield className="w-5 h-5" /> Modelo Numérico: Spline Cúbico Periódico
+            <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-blue-600" /> Curva Base: Spline
+                Cúbico Periódico
               </h3>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                A diferencia de la interpolación lineal (que produce cambios bruscos en $S'(t)$ y
-                desgaste en los taxis) o el polinomio de Lagrange (que sufre de oscilaciones de Runge
-                severas en los extremos), el <strong>Spline Cúbico Periódico</strong> garantiza:
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Para representar el comportamiento habitual de la demanda a lo
+                largo de las 24 horas a partir de los 10 puntos horarios, se
+                utiliza un <strong>Spline Cúbico Periódico</strong> que asegura
+                transiciones suaves sin cambios bruscos ni oscilaciones
+                artificiales.
               </p>
-              <ul className="text-xs text-slate-300 space-y-2 list-disc list-inside">
+              <ul className="text-xs text-slate-600 space-y-2 list-disc list-inside">
                 <li>
-                  <strong className="text-white">Continuidad $C^2$:</strong> la curva es dos veces
-                  continuamente diferenciable en todos los nodos.
+                  <strong className="text-slate-900">Continuidad suave:</strong>{" "}
+                  la curva y su tasa de cambio son continuas en todo momento.
                 </li>
                 <li>
-                  <strong className="text-white">Condición periódica:</strong> $S(0) = S(24)$, $S'(0) = S'(24)$ y $S''(0) = S''(24)$. Medianoche se empalma suavemente sin saltos de despacho.
+                  <strong className="text-slate-900">Ciclo de 24 horas:</strong>{" "}
+                  el inicio (00:00) y el cierre del día (24:00) empalman con el
+                  mismo nivel y pendiente.
                 </li>
                 <li>
-                  <strong className="text-white">Detección de umbral exacta:</strong> Cruce de 150 sol/min exactamente a las <strong>10:08:21</strong> y <strong>15:00:00</strong> (291 minutos críticos, 5.729 solicitudes excedentes).
-                </li>
-                <li>
-                  <strong className="text-white">Pico real de demanda:</strong> 180.89 sol/min a las <strong>12:21:34</strong> (no a las 12:00 exactas).
+                  <strong className="text-slate-900">
+                    Detección de horas críticas:
+                  </strong>{" "}
+                  en un día habitual, el umbral de 150 sol/min se supera entre
+                  las <strong>10:08</strong> y las <strong>15:00</strong>, con
+                  un máximo de 180.9 sol/min a las <strong>12:21</strong>.
                 </li>
               </ul>
             </div>
 
-            <div className="p-6 rounded-2xl bg-slate-900 border border-amber-500/20 space-y-4">
-              <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
-                <Radio className="w-5 h-5" /> Mejora Técnica: Filtro Predictivo a 30 min
+            <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Radio className="w-5 h-5 text-amber-600" /> Predicción
+                Automática a 30 Minutos
               </h3>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                Como los 10 nodos base no son equidistantes (pasos entre 1.5 h y 3.0 h), un modelo
-                ARIMA clásico es inadecuado. El sistema aplica:
+              <p className="text-sm text-slate-600 leading-relaxed">
+                El sistema combina la curva base del día con el método óptimo de
+                suavizado exponencial con tendencia amortiguada (Holt) para
+                anticipar la demanda con <strong>30 minutos de ventaja</strong>:
               </p>
-              <div className="p-3 bg-slate-950 rounded-xl font-mono text-xs text-amber-300 border border-slate-800">
-                ŷ(t+30) = S(t+30) + r̂_t
-                <br />
-                r_t = y_t - S(t) &nbsp;&nbsp;(desviación en tiempo real)
+              <div className="p-3 bg-slate-50 rounded-xl font-mono text-xs text-slate-800 border border-slate-200">
+                Demanda estimada (t + 30 min) = Curva Base (t + 30 min) +
+                Tendencia reciente suavizada
               </div>
-              <ul className="text-xs text-slate-300 space-y-2 list-disc list-inside">
+              <ul className="text-xs text-slate-600 space-y-2 list-disc list-inside">
                 <li>
-                  <strong className="text-white">Holt Amortiguado / SES / WMA:</strong> suaviza el
-                  ruido estocástico minuto a minuto y captura la tendencia de desvío.
+                  <strong className="text-slate-900">
+                    Filtro automático sin ajustes manuales:
+                  </strong>{" "}
+                  filtra el ruido normal minuto a minuto y detecta aumentos
+                  sostenidos causados por lluvias o eventos masivos.
                 </li>
                 <li>
-                  <strong className="text-white">28.6% de reducción en RMSE:</strong> frente a usar la
-                  spline sola.
+                  <strong className="text-slate-900">
+                    Reducción del 28.6% en el error de predicción:
+                  </strong>{" "}
+                  comparado con usar únicamente la curva histórica.
                 </li>
                 <li>
-                  <strong className="text-white">Reacción preventiva:</strong> detecta aguaceros y
-                  salidas de eventos imprevistos con <strong>hasta 15 a 30 minutos de anticipación</strong>, permitiendo reubicar los vehículos antes de que el pasajero espere.
+                  <strong className="text-slate-900">
+                    Despacho anticipado:
+                  </strong>{" "}
+                  emite alertas antes de que la demanda supere las 150
+                  solicitudes por minuto para reubicar la flota a tiempo.
                 </li>
               </ul>
             </div>
@@ -386,14 +529,14 @@ export const Dashboard: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 mt-12 py-6 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-wrap items-center justify-between gap-4">
+      <footer className="border-t border-slate-200 bg-white mt-12 py-6 text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-400">AutoMove City</span>
+            <span className="font-bold text-slate-700">AutoMove City</span>
             <span>· Análisis Numérico para Ingeniería</span>
           </div>
           <p className="text-slate-500">
-            Pontificia Universidad Javeriana · FastAPI + Astro + React + Tailwind CSS
+            Pontificia Universidad Javeriana · Simulador de Despacho Preventivo
           </p>
         </div>
       </footer>

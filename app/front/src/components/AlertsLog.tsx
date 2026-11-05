@@ -1,6 +1,11 @@
-import React from 'react';
-import { AlertCircle, CheckCircle2, BellRing, ArrowUpRight } from 'lucide-react';
-import type { AlertaItem } from './types';
+import React from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  BellRing,
+  ArrowUpRight,
+} from "lucide-react";
+import type { AlertaItem } from "./types";
 
 interface AlertsLogProps {
   alertas: AlertaItem[];
@@ -8,23 +13,25 @@ interface AlertsLogProps {
 
 export const AlertsLog: React.FC<AlertsLogProps> = ({ alertas }) => {
   return (
-    <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 shadow-xl backdrop-blur-md flex flex-col h-full">
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
-        <div className="flex items-center gap-2">
-          <BellRing className="w-4 h-4 text-amber-400" />
-          <h3 className="font-bold text-white text-sm uppercase tracking-wide">
-            Bitácora de Alertas en Tiempo Real
+    <div className="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm flex flex-col">
+      <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <BellRing className="w-4 h-4 text-blue-600 shrink-0" />
+          <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide truncate">
+            Historial de Alertas en Tiempo Real
           </h3>
         </div>
-        <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-400 font-bold border border-amber-400/20">
-          {alertas.length} eventos
+        <span className="inline-flex items-center text-xs font-mono px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200 whitespace-nowrap shrink-0">
+          {alertas.length} {alertas.length === 1 ? "evento" : "eventos"}
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto max-h-72 space-y-2 pr-1">
+      <div className="overflow-y-auto max-h-80 space-y-2.5 pr-1">
         {alertas.length === 0 ? (
           <div className="py-8 text-center text-slate-500 text-xs">
-            No se han registrado alertas en este ciclo. Inicia la simulación para monitorear el umbral.
+            No se han registrado alertas todavía. Cuando la demanda estimada
+            supere las 150 solicitudes por minuto, aparecerán los avisos
+            preventivos aquí.
           </div>
         ) : (
           alertas
@@ -33,44 +40,57 @@ export const AlertsLog: React.FC<AlertsLogProps> = ({ alertas }) => {
             .map((item) => (
               <div
                 key={item.id}
-                className={`p-3 rounded-xl border text-xs transition-all ${
-                  item.tipo === 'INICIO'
-                    ? 'bg-red-950/40 border-red-500/30 text-red-200'
-                    : 'bg-emerald-950/30 border-emerald-500/20 text-emerald-200'
+                className={`p-3.5 rounded-xl border text-xs transition-all ${
+                  item.tipo === "INICIO"
+                    ? "bg-red-50/70 border-red-200 text-slate-800"
+                    : "bg-emerald-50/70 border-emerald-200 text-slate-800"
                 }`}
               >
-                <div className="flex items-start justify-between gap-2 mb-1">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5 font-bold">
-                    {item.tipo === 'INICIO' ? (
-                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    {item.tipo === "INICIO" ? (
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
                     ) : (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     )}
-                    <span className={item.tipo === 'INICIO' ? 'text-red-400' : 'text-emerald-400'}>
-                      {item.tipo === 'INICIO' ? 'ALERTA DE DESPACHO' : 'FIN DE ALERTA'}
+                    <span
+                      className={
+                        item.tipo === "INICIO"
+                          ? "text-red-700"
+                          : "text-emerald-700"
+                      }
+                    >
+                      {item.tipo === "INICIO"
+                        ? "ALERTA DE DESPACHO PREVENTIVO"
+                        : "NORMALIZACIÓN DE DEMANDA"}
                     </span>
                   </div>
 
-                  <span className="font-mono text-slate-400 text-[11px] bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-800">
+                  <span className="font-mono text-slate-600 text-[11px] bg-white px-2 py-0.5 rounded border border-slate-200 whitespace-nowrap shrink-0">
                     Emitida: {item.hora_emision}
                   </span>
                 </div>
 
-                <p className="text-slate-300 leading-relaxed mb-1.5 text-[11px] font-sans">
+                <p className="text-slate-700 leading-relaxed mb-2 text-xs">
                   {item.mensaje}
                 </p>
 
-                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800/60 text-[10px] text-slate-400">
-                  <span className="flex items-center gap-0.5 text-amber-400">
-                    <ArrowUpRight className="w-3 h-3" />
-                    Objetivo: {item.hora_objetivo}
+                <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-slate-200/80 text-[11px] text-slate-600">
+                  <span className="flex items-center gap-0.5 text-blue-700 font-semibold whitespace-nowrap">
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    Hora objetivo: {item.hora_objetivo}
                   </span>
-                  <span>•</span>
-                  <span>Proyectado: <strong className="text-slate-200">{item.y_proy} sol/min</strong></span>
+                  <span>·</span>
+                  <span className="whitespace-nowrap">
+                    Proyectado:{" "}
+                    <strong className="text-slate-900">
+                      {item.y_proy} sol/min
+                    </strong>
+                  </span>
                   {item.exceso !== undefined && item.exceso > 0 && (
                     <>
-                      <span>•</span>
-                      <span className="text-red-400 font-semibold">
+                      <span>·</span>
+                      <span className="text-red-700 font-semibold whitespace-nowrap">
                         Exceso: +{item.exceso} sol/min
                       </span>
                     </>

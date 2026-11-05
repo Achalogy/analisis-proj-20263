@@ -1,10 +1,19 @@
-export type SmoothingMethod = 'holt' | 'ses' | 'wma' | 'spline';
+export type SmoothingMethod = "holt" | "ses" | "wma" | "spline";
 
 export interface EventoConfig {
   descripcion: string;
   centro_h: number;
   ancho_h: number;
   amplitud: number;
+}
+
+export interface EventoInyectado {
+  id: string;
+  descripcion: string;
+  minuto_inicio: number;
+  hora_inicio: string;
+  amplitud: number;
+  duracion_minutos: number;
 }
 
 export interface SimulacionConfig {
@@ -38,7 +47,7 @@ export interface PuntoPaso {
   y_proy: number;
   alerta_activa: boolean;
   evento_alerta?: {
-    tipo: 'INICIO' | 'FIN';
+    tipo: "INICIO" | "FIN";
     minuto_emision: number;
     hora_emision: string;
     minuto_objetivo: number;
@@ -51,7 +60,7 @@ export interface PuntoPaso {
 
 export interface AlertaItem {
   id: string;
-  tipo: 'INICIO' | 'FIN';
+  tipo: "INICIO" | "FIN";
   minuto_emision: number;
   hora_emision: string;
   minuto_objetivo: number;
@@ -62,9 +71,12 @@ export interface AlertaItem {
   timestamp: string;
 }
 
+export type EstadoCiclo =
+  "iniciada" | "en_progreso" | "pausada" | "completada" | "detenida" | "error";
+
 export interface EstadoSimulacion {
   id: string;
-  estado: 'iniciada' | 'en_progreso' | 'completada' | 'detenida' | 'error';
+  estado: EstadoCiclo;
   progreso_porcentaje: number;
   minuto_actual: number;
   hora_actual: string;
@@ -73,5 +85,6 @@ export interface EstadoSimulacion {
   ultimo_paso?: PuntoPaso | null;
   total_alertas_emitidas: number;
   en_alerta: boolean;
+  eventos_inyectados?: EventoInyectado[];
   config: SimulacionConfig;
 }
